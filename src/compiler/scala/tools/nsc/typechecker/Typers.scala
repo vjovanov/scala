@@ -1365,14 +1365,14 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
       val impl1 =
         // could looking at clazz.typeOfThis before typing the template cause spurious illegal cycle errors?
         // OTOH, always typing silently and rethrowing if we're not going to reify causes other problems
-        if (clazz.isAnonymousClass && willReifyNew(clazz.typeOfThis))
+        if (opt.virtualize && clazz.isAnonymousClass && willReifyNew(clazz.typeOfThis))
           implTyper.silent(_.typedTemplate(cdef.impl, parentTypes(cdef.impl)), false) match {
             case t: Template   => t
             case ex: TypeError => null // TODO: ensure clazz isn't used anywhere but in typedReifiedNew
           }
         else
           implTyper.typedTemplate(cdef.impl, parentTypes(cdef.impl))
-      if(impl1 == null) return EmptyTree
+      if (opt.virtualize && impl1 == null) return EmptyTree
 
       val impl2 = finishMethodSynthesis(impl1, clazz, context)
       if ((clazz != ClassfileAnnotationClass) &&
@@ -1898,11 +1898,13 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         }
         var stats1 = typedStats(block.stats, context.owner)
         var expr1 = typed(block.expr, mode & ~(FUNmode | QUALmode), pt)
-        (block.stats, expr1) match {
-          case (List(ClassDef(_, _, _, impl)), tree1@Apply(Select(New(tpt), _), Nil)) if tpt.tpe != null && willReifyNew(tpt.tpe) =>
-            stats1 = Nil // drop the anonymous class -- its instantiation has been virtualized anyway (that call is in expr1)
-            expr1 = typedReifiedNew(impl, tpt)
-          case _ =>
+        if (opt.virtualize) {
+          (block.stats, expr1) match {
+            case (List(ClassDef(_, _, _, impl)), tree1@Apply(Select(New(tpt), _), Nil)) if tpt.tpe != null && willReifyNew(tpt.tpe) =>
+              stats1 = Nil // drop the anonymous class -- its instantiation has been virtualized anyway (that call is in expr1)
+              expr1 = typedReifiedNew(impl, tpt)
+            case _ =>
+          }
         }
         treeCopy.Block(block, stats1, expr1)
           .setType(if (treeInfo.isExprSafeToInline(block)) expr1.tpe else expr1.tpe.deconst)
@@ -2451,7 +2453,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
               def transformResultType(tp: Type) = tp match {
                 // skip formal arguments if in pattern mode (the args are subpatterns)
                 case MethodType(_, rtp) if (inPatternMode(mode)) => rtp
-                case _ if fun.symbol.isConstructor && willReifyNew(tp) =>
+                case _ if opt.virtualize && fun.symbol.isConstructor && willReifyNew(tp) =>
                   reifiedNewType(tp)
                 case _ =>
                   tp
@@ -3260,9 +3262,10 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             case _ =>
           }
         }
-        if (varsym.isVariable ||
-            // setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
-            (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
+//      if (varsym.isVariable ||
+//        // setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
+//        (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
+        if (varsym.isVariable || varsym.isValue && phase.erasedTypes) {
           val rhs1 = typed(rhs, EXPRmode | BYVALmode, lhs1.tpe)
           treeCopy.Assign(tree, lhs1, checkDead(rhs1)) setType UnitClass.tpe
         }
@@ -3275,6 +3278,10 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
       def typedIf(cond: Tree, thenp: Tree, elsep: Tree) = {
         val cond1 = checkDead(typed(cond, EXPRmode | BYVALmode, BooleanClass.tpe))
+        if (elsep.isEmpty) { // in the future, should be unnecessary
+          val thenp1 = typed(thenp, UnitClass.tpe)
+          treeCopy.If(tree, cond1, thenp1, elsep) setType thenp1.tpe
+        } else {
           var thenp1 = typed(thenp, pt)
           var elsep1 = typed(elsep, pt)
           val (owntype, needAdapt) = ptOrLub(List(thenp1.tpe, elsep1.tpe))
@@ -3284,6 +3291,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           }
           treeCopy.If(tree, cond1, thenp1, elsep1) setType owntype
         }
+      }
 
       def typedMatch(tree: Tree, selector: Tree, cases: List[CaseDef]): Tree = {
         if (selector == EmptyTree) {
@@ -3359,7 +3367,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
       def typedNew(tpt: Tree): Tree = {
         val (willReify, tpt1) = {
           val tpt0 = typedTypeConstructor(tpt)
-          if(willReifyNew(tpt0.tpe)) (true, tpt0)
+          if (willReifyNew(tpt0.tpe)) (true, tpt0)
           else (false, {
           checkClassType(tpt0, false, true)
           if (tpt0.hasSymbol && !tpt0.symbol.typeParams.isEmpty) {
@@ -3711,7 +3719,8 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
       def typedApply(fun: Tree, args: List[Tree]): Tree = fun match {
         case fun@Select(qual, name)
-              if ((mode & EXPRmode) != 0)
+              if opt.virtualize
+              && ((mode & EXPRmode) != 0)
               && !isPastTyper
               && fun.symbol == NoSymbol                     // unresolved, so far
               && !qual.isInstanceOf[New]                    // TODO: applyExternal does not intercept constructor calls, right?
@@ -3894,7 +3903,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         }
       }
 
-      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, funTp: Type, origArgs: List[Tree]): Tree = {
+      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, funTp: Type, origArgs: List[Tree]): Tree = if (opt.virtualize) {
         /** TODO:
          - need to do overload resolution to be sure whether we resolve to EmbeddedControls_XXX or not
          - overload resolution is done in full by doTypedApply, but it is enough we pick the same symbol here
@@ -3949,7 +3958,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           case _ =>
             tryTypedScope(funsym, funTp, origArgs)
         }
-      }
+      } else EmptyTree
 
       def convertToAssignment(fun: Tree, qual: Tree, name: Name, args: List[Tree], ex: TypeError): Tree = {
         val prefix = name.subName(0, name.length - nme.EQL.length)
@@ -4084,7 +4093,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         /** Is `qual` a staged row? (i.e., of type Rep[Row[Rep]{decls}])?
          * Then what's the type of `name`?
          */
-        def rowSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = {
+        def rowSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
           debuglog("[DNR] dynatype on row for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
           val rowTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Row)
           debuglog("[DNR] context, row prefix, tp "+ (context.owner.ownerChain, rowTp))
@@ -4105,7 +4114,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           ) yield {
             (qualRowTp, member)
           }
-        }
+        } else None
 
         def isApplyDynamicName(name: Name) = (name == nme.updateDynamic) || (name == nme.selectDynamic) || (name == nme.applyDynamic)
 
@@ -4199,7 +4208,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             member(qual, name)
           }
         if (sym == NoSymbol && name != nme.CONSTRUCTOR && (mode & EXPRmode) != 0) {
-          if ((mode & FUNmode) == 0 && !isPastTyper) {
+          if (opt.virtualize && (mode & FUNmode) == 0 && !isPastTyper) {
             typedApplyExternal(treeCopy.Select(tree, qual, name), List(), false) match {
               case EmptyTree =>
               case tree1 => return tree1
@@ -4490,7 +4499,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
                 // Avoiding some spurious error messages: see SI-2388.
                 if (reporter.hasErrors && (name startsWith tpnme.ANON_CLASS_NAME)) ()
                 else {
-                  val similar = if (!context.reportGeneralErrors) "" else ( // TODO: waiting for proper fix by Hubert or Paul
+                  val similar = if (opt.virtualize && !context.reportGeneralErrors) "" else ( // TODO: waiting for proper fix by Hubert or Paul
                     // name length check to limit unhelpful suggestions for e.g. "x" and "b1"
                     if (name.length > 2) {
                       val allowed = (
@@ -5079,7 +5088,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
     def typedHigherKindedType(tree: Tree): Tree = typedHigherKindedType(tree, NOmode)
 
-    private def willReifyNew(tp: Type): Boolean = (phase.id <= currentRun.typerPhase.id) && {
+    private def willReifyNew(tp: Type): Boolean = opt.virtualize && (phase.id <= currentRun.typerPhase.id) && {
       // don't run after typers
       //  (see pos/t0586 for a scenario that makes us run during cleanup, where Row is no longer in EmbeddedControls)
       //  also, haven't figured out yet how to deal with varargs after erasure

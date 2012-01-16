@@ -146,13 +146,12 @@ trait Trees extends api.Trees { self: SymbolTable =>
     }
   }
 
-
   // ---- values and creators ---------------------------------------
 
   object LiftedAssign {
     def unapply(t: Tree): Option[(Tree, Tree)] = t match {
       case Assign(lhs, rhs) => Some((lhs, rhs))
-      case Apply(Ident(nme._assign), List(lhs, rhs)) => Some((lhs, rhs))
+      case Apply(Ident(nme._assign), List(lhs, rhs)) if settings.Yvirtualize.value => Some((lhs, rhs))
       case _ => None
     }
   }

@@ -1285,8 +1285,6 @@ self =>
           val thenp = expr()
           val elsep = if (in.token == ELSE) { in.nextToken(); expr() }
                       else Literal(Constant())
-
-          //If(cond, thenp, elsep)
           makeIfThenElse(cond, thenp, elsep)
         }
       case TRY =>
@@ -1316,7 +1314,7 @@ self =>
       case WHILE =>
         val start = in.offset
         atPos(in.skipToken()) {
-          //val lname: Name = freshName(nme.WHILE_PREFIX)
+          // val lname: Name = freshTermName(nme.WHILE_PREFIX)
           val cond = condExpr()
           newLinesOpt()
           val body = expr()
@@ -1594,7 +1592,6 @@ self =>
           case e => e
         }
       }
-
       in.token match {
         case LBRACE   => List(blockExpr())
         case LPAREN   => inParens(if (in.token == RPAREN) Nil else args())

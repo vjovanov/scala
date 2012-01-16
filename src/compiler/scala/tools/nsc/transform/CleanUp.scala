@@ -623,7 +623,7 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
         super.transform(array)
 
       // embeddings: transform calls to __while and __doWhile to jumps
-      case Apply(fn, List(arg1, arg2)) =>
+      case Apply(fn, List(arg1, arg2)) if opt.virtualize =>
         def atEnd(pos: Position) = pos match {
           case p: OffsetPosition => new OffsetPosition(p.source, p.endOrPoint)
           case _ => pos
