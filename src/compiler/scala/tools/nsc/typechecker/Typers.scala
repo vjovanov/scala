@@ -4490,7 +4490,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
                 // Avoiding some spurious error messages: see SI-2388.
                 if (reporter.hasErrors && (name startsWith tpnme.ANON_CLASS_NAME)) ()
                 else {
-                  val similar = (
+                  val similar = if (!context.reportGeneralErrors) "" else ( // TODO: waiting for proper fix by Hubert or Paul
                     // name length check to limit unhelpful suggestions for e.g. "x" and "b1"
                     if (name.length > 2) {
                       val allowed = (
