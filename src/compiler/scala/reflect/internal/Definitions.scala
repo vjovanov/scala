@@ -241,6 +241,19 @@ trait Definitions extends reflect.api.StandardDefinitions {
       def Class_getMethod               = getMember(ClassClass, nme.getMethod_)
     lazy val DynamicClass               = getRequiredClass("scala.Dynamic")
 
+    // embeddings
+    lazy val EmbeddedControlsClass  = getRequiredClass("scala.EmbeddedControls")
+      lazy val EmbeddedControls_ifThenElse = getMember(EmbeddedControlsClass, nme._ifThenElse)
+      lazy val EmbeddedControls_whileDo = getMember(EmbeddedControlsClass, nme._whileDo)
+      lazy val EmbeddedControls_doWhile = getMember(EmbeddedControlsClass, nme._doWhile)
+      lazy val EmbeddedControls_Row = getMember(EmbeddedControlsClass, tpnme.Row)
+      lazy val EmbeddedControls_new = getMember(EmbeddedControlsClass, nme._new)
+      lazy val EmbeddedControls_newVar = getMember(EmbeddedControlsClass, nme._newVar)
+      lazy val EmbeddedControls_assign = getMember(EmbeddedControlsClass, nme._assign)
+      lazy val EmbeddedControls_return = getMember(EmbeddedControlsClass, nme._return)
+      lazy val EmbeddedControls_equal = getMember(EmbeddedControlsClass, nme._equal)
+    lazy val ProxyControlsClass  = getRequiredClass("scala.ProxyControls")
+
     // fundamental modules
     lazy val SysPackage = getPackageObject("scala.sys")
       def Sys_error    = getMember(SysPackage, nme.error)
@@ -404,6 +417,10 @@ trait Definitions extends reflect.api.StandardDefinitions {
     lazy val FullManifestModule    = getRequiredModule("scala.reflect.Manifest")
     lazy val OptManifestClass      = getRequiredClass("scala.reflect.OptManifest")
     lazy val NoManifest            = getRequiredModule("scala.reflect.NoManifest")
+    lazy val SourceLocationClass   = getRequiredClass("scala.reflect.SourceLocation")
+    lazy val SourceLocationModule  = getRequiredModule("scala.reflect.SourceLocation")
+    lazy val SourceContextClass    = getRequiredClass("scala.reflect.SourceContext")
+    lazy val SourceContextModule   = getRequiredModule("scala.reflect.SourceContext")
     lazy val CodeClass             = getClass(sn.Code)
     lazy val CodeModule            = getModule(sn.Code)
       lazy val Code_lift = getMember(CodeModule, nme.lift_)

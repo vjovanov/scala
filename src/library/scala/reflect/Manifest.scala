@@ -267,6 +267,12 @@ object Manifest {
       override def toString = parents.mkString(" with ")
     }
 
+  def refinedType[T](parent: Manifest[_], fieldNames: List[String], fieldTypes: List[Manifest[_]]): Manifest[T] =
+    new RefinedManifest[T] {
+      def erasure = parent.erasure
+      def fields = fieldNames zip fieldTypes
+    }
+
   /** A generic manifest factory from a reflect.Type. Except where
    *  mandated by performance considerations, we should replace most
    *  other manifest factories by this one. There's just one thing

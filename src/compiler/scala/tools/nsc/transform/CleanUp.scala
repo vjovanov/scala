@@ -9,6 +9,7 @@ package transform
 import symtab._
 import Flags._
 import scala.collection._
+import util.OffsetPosition
 
 abstract class CleanUp extends Transform with ast.TreeDSL {
   import global._
@@ -621,6 +622,32 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
           }) =>
         super.transform(array)
 
+      // embeddings: transform calls to __while and __doWhile to jumps
+      case Apply(fn, List(arg1, arg2)) =>
+        def atEnd(pos: Position) = pos match {
+          case p: OffsetPosition => new OffsetPosition(p.source, p.endOrPoint)
+          case _ => pos
+        }
+        def append(body: Tree, last: Tree) = body match {
+          case Block(stats, expr) =>
+            if (treeInfo.isPureExpr(expr)) Block(stats, last)
+            else Block(stats ::: List(expr), last)
+          case _ =>
+            Block(List(body), last)
+        }
+        def continu(lname: Name) =
+          atPos(atEnd(arg2.pos))(Apply(Ident(lname), Nil))
+        def labelDef(lname: Name, rhs: Tree) =
+          typedWithPos(tree.pos)(LabelDef(lname, List(), rhs))
+        super.transform(
+          if (fn.symbol == EmbeddedControls_whileDo) {
+            val lname = unit.freshTermName("while$")
+            labelDef(lname, If(arg1, append(arg2, continu(lname)), Literal(Constant(()))))
+          } else if (fn.symbol == EmbeddedControls_doWhile) {
+            val lname = unit.freshTermName("doWhile$")
+            labelDef(lname, append(arg1, If(arg2, continu(lname), Literal(Constant(())))))
+          } else tree
+        )
       case _ =>
         super.transform(tree)
     }

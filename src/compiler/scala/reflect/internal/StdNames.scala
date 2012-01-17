@@ -153,6 +153,10 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     final val ClassfileAnnotation: NameType = "ClassfileAnnotation"
     final val Enum: NameType                = "Enum"
 
+    // embedding information
+    val TransparentProxy: NameType = "TransparentProxy"
+    val Row: NameType = "Row"
+
     // Annotation simple names, used in Namer
     final val BeanPropertyAnnot: NameType = "BeanProperty"
     final val BooleanBeanPropertyAnnot: NameType = "BooleanBeanProperty"
@@ -362,6 +366,7 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     val runtime: NameType              = "runtime"
     val sameElements: NameType         = "sameElements"
     val scala_ : NameType              = "scala"
+    val selectDynamic: NameType        = "selectDynamic"
     val self: NameType                 = "self"
     val setAccessible: NameType        = "setAccessible"
     val setAnnotations: NameType       = "setAnnotations"
@@ -389,6 +394,17 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     val wait_ : NameType               = "wait"
     val withFilter: NameType           = "withFilter"
     val zip: NameType                  = "zip"
+
+    // embedding information
+    val _doWhile = newTermName("__doWhile")
+    val _equal = newTermName("__equal")
+    val _ifThenElse = newTermName("__ifThenElse")
+    val _new = newTermName("__new")
+    val _newVar = newTermName("__newVar")
+    val _assign = newTermName("__assign")
+    val _return = newTermName("__return")
+    val _whileDo = newTermName("__whileDo")
+    val _forward = newTermName("__forward")
 
     // unencoded operators
     object raw {
