@@ -73,6 +73,19 @@ trait EmbeddedControls {
    */
   trait Row[+Rep[x]]
 
+  /**
+   * given `def OptiML[R](b: => R) = new Scope[OptiML, OptiMLExp, R](b)`
+   *
+   * `OptiML { body }` is expanded to:
+   *
+   *  trait DSLprog$ extends OptiML {
+   *    def apply = body
+   *  }
+   *  (new DSLprog$ with OptiMLExp): OptiML with OptiMLExp
+   *
+   *
+   */
+  class Scope[Interface, Implementation, Result](body: => Result)
 }
 
 trait ProxyControlsBase extends EmbeddedControls {

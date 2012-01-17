@@ -156,6 +156,7 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     // embedding information
     val TransparentProxy: NameType = "TransparentProxy"
     val Row: NameType = "Row"
+    val Scope: NameType = "Scope"
 
     // Annotation simple names, used in Namer
     final val BeanPropertyAnnot: NameType = "BeanProperty"

@@ -3721,6 +3721,95 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           typedApply1(fun, args)
       }
 
+      /**
+       * given `def OptiML[R](b: => R) = new Scope[OptiML, OptiMLExp, R](b)`
+       *
+       * `OptiML { body }` is (roughly) expanded to:
+       *
+       *  abstract class DSLprog extends OptiML {
+       *    def apply: bodyType = body
+       *  }
+       *  class DSLrun extends DSLprog with OptiMLExp
+       *  (new DSLrun): OptiML with OptiMLExp
+       *
+       */
+      def tryTypedScope(funSym: Symbol, funTp: Type, args: List[Tree]): Tree = {
+        def parentTypes(ps: Type*): List[Type] = { val parents = ps.toList; if(parents.head.typeSymbol.isTrait) ObjectClass.tpe :: parents else parents }
+
+        if (!isPastTyper && (funSym ne null) && !funSym.isConstructor){ // don't rewrite the `new Scope` body of the method that defines the new scope -- don't run after typer (the nested Scope class won't be found after erasure)
+          val scopeTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Scope) // TODO: avoid the memberType, only need scopeTp.typeSymbol
+          val resultAtScope = funTp.finalResultType.baseType(scopeTp.typeSymbol)
+          if (resultAtScope != NoType && resultAtScope.typeArgs.lengthCompare(3) == 0) {
+            val List(ifaceTp, implTp, resTp) = resultAtScope.typeArgs
+            val body = args(0) // looks like it hasn't been typed yet, so no need to rejig the owners etc
+
+            assert(ifaceTp.typeSymbol.isTrait || ifaceTp.typeSymbol.primaryConstructor.info.paramTypes.isEmpty) // TODO: error message
+
+            // println("generating:\ntrait DSLprog extends %s {\n def apply: %s = %s \n } \n (new DSLprog with %s) : %s with %s".format(ifaceTp, bodyType, body, implTp, ifaceTp, implTp))
+
+            val scopeClass = context.owner.newClass(body.pos, newTypeName("DSLprog")) setFlag (ABSTRACT | SYNTHETIC) // trait --> addInterfaces:implMethodDef complains "Error: implMethod missing for method apply"
+            val scopeParents = parentTypes(ifaceTp)
+            scopeClass.setInfo(new ClassInfoType(scopeParents, new Scope, scopeClass))
+
+            val applyMethod = scopeClass.newMethod(body.pos, nme.apply)
+              .setFlag(FINAL)
+              .setInfo(NullaryMethodType(AnyClass.tpe))
+            // can't do better than AnyClass.tpe until we type the body
+            // resTp is an undetparam when we get here -- can't use it
+            // however, the body must be type checked inside the synthetic class definition,
+            // the class definition needs (() => bodyType) as a parent so we can call apply on the result of the scope
+            // furthermore, bodyType isn't known until after typing the class definition... catch-22 anyone?
+
+            scopeClass.info.decls enter applyMethod
+
+            val applyMethodDef = DefDef(
+              sym = applyMethod,
+              vparamss = Nil,
+              rhs = body)
+
+            // val argss =
+              // derive from scopeParents.head.typeSymbol.primaryConstructor.info.paramTypes
+              // either Nil or List(Nil) -- trait or object? in any case, don't support superclasses with ctors that expect args
+            val scopeClassTree = atPos(tree.pos)(typed(ClassDef(
+              sym = scopeClass,
+              constrMods = Modifiers(0),
+              vparamss = Nil,
+              argss = List(Nil),
+              body = List(applyMethodDef),
+              superPos = body.pos)))
+
+            // now we've typed the class definition, we can figure out the apply method's real result type
+            /*val bodyType = scopeClassTree find (_.symbol eq applyMethod) map { case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
+              tpt.tpe = rhs.tpe
+              applyMethod.setInfo(NullaryMethodType(rhs.tpe))
+              rhs.tpe
+            } get
+
+            val bodyFunType = functionType(Nil, bodyType)*/
+            val newTp = intersectionType(List(ifaceTp, implTp/*, bodyFunType*/))
+
+            // mix the scope class with the implementation trait and `() => $bodyFunType`
+            val scopeAnonCls = {
+              val clazz = context.owner.newClass(body.pos, newTypeName("DSLrun")) setFlag (SYNTHETIC)
+              clazz.setInfo(ClassInfoType(List(scopeClass.tpe, implTp/*, bodyFunType*/), new Scope, clazz))
+              clazz
+            }
+
+            atPos(tree.pos)(typed(Block(
+              scopeClassTree,
+              ClassDef(
+                sym = scopeAnonCls,
+                constrMods = Modifiers(0),
+                vparamss = Nil,
+                argss = List(Nil),
+                body = List(),
+                superPos = body.pos),
+              Typed(Apply(Select(New(TypeTree(scopeAnonCls.tpe)), nme.CONSTRUCTOR), Nil), TypeTree(newTp))
+              )))
+          } else EmptyTree
+        } else EmptyTree
+      }
+
       def typedApply1(fun: Tree, args: List[Tree]): Tree = {
         val stableApplication = (fun.symbol ne null) && fun.symbol.isMethod && fun.symbol.isStable
         if (stableApplication && isPatternMode) {
@@ -3736,7 +3825,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             case fun1: Tree =>
               val fun2 = if (stableApplication) stabilizeFun(fun1, mode, pt) else fun1
 
-              val unvirt = unvirtualize(tree.pos, fun.pos, fun2.symbol, args)
+              val unvirt = unvirtualize(tree.pos, fun.pos, fun2.symbol, fun2.tpe, args)
               if (unvirt ne EmptyTree)
                 return unvirt
 
@@ -3805,7 +3894,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         }
       }
 
-      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, origArgs: List[Tree]): Tree = {
+      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, funTp: Type, origArgs: List[Tree]): Tree = {
         /** TODO:
          - need to do overload resolution to be sure whether we resolve to EmbeddedControls_XXX or not
          - overload resolution is done in full by doTypedApply, but it is enough we pick the same symbol here
@@ -3858,7 +3947,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             // resetting symbols of its temporary variables makes it impossible to resolve them afterwards
             atPos(pos)(typed(Apply(Select(lhs, nme.EQ) setPos funpos, rhs)))
           case _ =>
-            EmptyTree
+            tryTypedScope(funsym, funTp, origArgs)
         }
       }
 
@@ -3981,6 +4070,9 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         }
       }
 
+      def embeddedControlsPrefixIn(owner: Symbol): Type =
+        owner.ownerChain find (o => o.isClass && ThisType(o).baseClasses.contains(EmbeddedControlsClass)) map (ThisType(_)) getOrElse PredefModule.tpe
+
       object dyna {
         @inline private def boolOpt(c: Boolean) = if(c) Some(()) else None
         @inline private def listOpt[T](xs: List[T]) = xs match { case x :: Nil => Some(x) case _ => None }
@@ -3994,9 +4086,8 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
          */
         def rowSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = {
           debuglog("[DNR] dynatype on row for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
-          val rowPrefix = context.owner.ownerChain find (o => o.isClass && ThisType(o).baseClasses.contains(EmbeddedControlsClass)) map (ThisType(_)) getOrElse PredefModule.tpe
-          val rowTp = rowPrefix.memberType(EmbeddedControls_Row)
-          debuglog("[DNR] context, row prefix, tp "+ (context.owner.ownerChain, rowPrefix, rowTp))
+          val rowTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Row)
+          debuglog("[DNR] context, row prefix, tp "+ (context.owner.ownerChain, rowTp))
 
           val rep = NoSymbol.newTypeParameter(newTypeName("Rep"))
           val repTpar = rep.newTypeParameter(newTypeName("T")).setFlag(COVARIANT).setInfo(TypeBounds.empty)
