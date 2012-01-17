@@ -387,6 +387,7 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     val unapplySeq: NameType           = "unapplySeq"
     val unbox: NameType                = "unbox"
     val update: NameType               = "update"
+    val updateDynamic: NameType        = "updateDynamic"
     val value: NameType                = "value"
     val valueOf : NameType             = "valueOf"
     val values : NameType              = "values"
