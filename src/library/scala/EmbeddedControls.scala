@@ -21,10 +21,13 @@ package scala
  *
  *  a method call: __ifThenElse(cond, thenp, elsep)
  *
- *  It then depends on the type assignment which version of `ifThenElse` is called.
- *  If it is still the standard one in this trait, the type checker will
+ *  This method call will be bound to an implementation based on normal rules of scoping.
+ *  If it binds to the standard one in this trait, the type checker will
  *  replace it by an `If` tree node. If not, the call will be left as it is
  *  and a staging or interpreting DSL can take over.
+ *
+ * @NOTE: This is experimental.
+ *        None of the above will happen unless you compile with -Yvirtualize.
  */
 trait EmbeddedControls {
   /** Note why types are by-value
