@@ -2605,12 +2605,12 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
     // if we filter out the getters but leave in the backing fields, member lookup breaks (e.g. when doing a selectDynamic)
     // and we get strange type errors...
-    // found   : java.lang.Object with Row[Test.Rep]{val x: Int; val y: java.lang.String}
-    // required: Row[Test.Rep]{val x: Int; val y: String}
+    // found   : java.lang.Object with Struct[Test.Rep]{val x: Int; val y: java.lang.String}
+    // required: Struct[Test.Rep]{val x: Int; val y: String}
     // to avoid duplicates, only retain methods
     // the fields will only be used indirectly, since the corresponding ValDef holds the RHS with the information we're after
     private def reifiedNewType(tp: Type) = {
-      val repTycon = if(phase.erasedTypes) AnyClass.tpe else tp.baseType(EmbeddedControls_Row).typeArgs(0) // TODO
+      val repTycon = if(phase.erasedTypes) AnyClass.tpe else tp.baseType(EmbeddedControls_Struct).typeArgs(0) // TODO
       val repSym = repTycon.typeSymbolDirect
       val ClassInfoType(parents, defSyms, origClass) = tp.typeSymbol.info
 
@@ -4090,13 +4090,13 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         def acceptsApplyDynamic(tp: Type) =
           settings.Xexperimental.value && (tp.typeSymbol isNonBottomSubClass DynamicClass)
 
-        /** Is `qual` a staged row? (i.e., of type Rep[Row[Rep]{decls}])?
+        /** Is `qual` a staged struct? (i.e., of type Rep[Struct[Rep]{decls}])?
          * Then what's the type of `name`?
          */
-        def rowSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
-          debuglog("[DNR] dynatype on row for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
-          val rowTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Row)
-          debuglog("[DNR] context, row prefix, tp "+ (context.owner.ownerChain, rowTp))
+        def structSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
+          debuglog("[DNR] dynatype on struct for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
+          val structTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Struct)
+          debuglog("[DNR] context, tp "+ (context.owner.ownerChain, structTp))
 
           val rep = NoSymbol.newTypeParameter(newTypeName("Rep"))
           val repTpar = rep.newTypeParameter(newTypeName("T")).setFlag(COVARIANT).setInfo(TypeBounds.empty)
@@ -4104,15 +4104,15 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           val repVar = TypeVar(rep)
 
           for(
-            _ <- boolOpt((qual.tpe ne null) && qual.tpe <:< repVar.applyArgs(List(appliedType(rowTp, List(repVar))))); // qual.tpe <:< ?Rep[Row[?Rep]] -- not Row[Any], because that requires covariance of Rep!?
+            _ <- boolOpt((qual.tpe ne null) && qual.tpe <:< repVar.applyArgs(List(appliedType(structTp, List(repVar))))); // qual.tpe <:< ?Rep[Struct[?Rep]] -- not Struct[Any], because that requires covariance of Rep!?
             repTp <- listOpt(solvedTypes(List(repVar), List(rep), List(COVARIANT), false, -3)); // search for minimal solution
             // _ <- Some(println("mkInvoke repTp="+ repTp));
             // if so, generate an invocation and give it type `Rep[T]`, where T is the type given to member `name` in `decls`
             repSym = repTp.typeSymbolDirect;
-            qualRowTp <- qual.tpe.baseType(repSym).typeArgs.headOption; // this specifies `decls`
-            member <- symOpt(qualRowTp.member(name))
+            qualStructTp <- qual.tpe.baseType(repSym).typeArgs.headOption; // this specifies `decls`
+            member <- symOpt(qualStructTp.member(name))
           ) yield {
-            (qualRowTp, member)
+            (qualStructTp, member)
           }
         } else None
 
@@ -4125,7 +4125,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           if (isApplyDynamicName(name)) None // don't selectDynamic selectDynamic
           else if (acceptsApplyDynamic(qual.tpe.widen)) Some(NoType) // do select dynamic at unknown type
           else
-            rowSelectedMember(qual, name) map { case (pre, sym) => // == Some(tp) ==> do select dynamic and pass it `tp`, the type specified for `name` by the row `qual`
+            structSelectedMember(qual, name) map { case (pre, sym) => // == Some(tp) ==> do select dynamic and pass it `tp`, the type specified for `name` by the struct `qual`
               pre.memberType(sym).finalResultType
             }
 
@@ -4142,7 +4142,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
         def isDynamicallyUpdatable(tree: Tree) = tree match {
           case DynamicUpdate(qual, name) =>
-            rowSelectedMember(qual, newTermName(name.toString)) match {
+            structSelectedMember(qual, newTermName(name.toString)) match {
               case Some((pre, sym)) =>
                 pre.member(nme.getterToSetter(sym.name)) != NoSymbol // but does it have a setter? can't use sym.accessed.isMutable since sym.accessed does not exist
               case _ =>
@@ -5090,17 +5090,17 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
     private def willReifyNew(tp: Type): Boolean = opt.virtualize && (phase.id <= currentRun.typerPhase.id) && {
       // don't run after typers
-      //  (see pos/t0586 for a scenario that makes us run during cleanup, where Row is no longer in EmbeddedControls)
+      //  (see pos/t0586 for a scenario that makes us run during cleanup, where Struct is no longer in EmbeddedControls)
       //  also, haven't figured out yet how to deal with varargs after erasure
 
       tp.typeSymbol != NoSymbol && !tp.typeSymbol.owner.isJavaDefined && // avoid illegal cyclic references during quick.lib (e.g., no need to reify new AnyRef etc)
-      tp.baseType(EmbeddedControls_Row) != NoType
+      tp.baseType(EmbeddedControls_Struct) != NoType
       //  && tp.typeSymbol.info.isInstanceOf[ClassInfoType] // TODO: ??
     }
 
     private def typedReifiedNew(templ: Template, tpt: Tree): Tree = {
-      val rowBaseTp = tpt.tpe.baseType(EmbeddedControls_Row)
-      val repTycon = if(phase.erasedTypes) AnyClass.tpe else rowBaseTp.typeArgs(0) // TODO
+      val structBaseTp = tpt.tpe.baseType(EmbeddedControls_Struct)
+      val repTycon = if(phase.erasedTypes) AnyClass.tpe else structBaseTp.typeArgs(0) // TODO
       val repSym = repTycon.typeSymbolDirect
       val ClassInfoType(_, defSyms, origClass) = tpt.tpe.typeSymbol.info
 
@@ -5220,7 +5220,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
         // create new symbols for the duplicated tree, tree.duplicate does not do this
         // (without new symbols, you get weird errors in lambdaLift, because markFree unwittingly updates all trees that share a symbol)
-        // TODO: generalize to all DefTrees that introduce new symbols (nested objects will still not work in a Row...)
+        // TODO: generalize to all DefTrees that introduce new symbols (nested objects will still not work in a Struct...)
         object newSyms extends Transformer {
           override def transform(t: Tree): Tree = {
             t match {
@@ -5266,7 +5266,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             """|since %s <:< %s, reification was attempted,
                |but the result, `%s`, did not type check.
                |Probable cause: there is no suitable `__new` method in scope.
-               |See the definition of `trait Row` in EmbeddedControls for details.""".stripMargin.format(tpt.tpe, rowBaseTp, newCall))
+               |See the definition of `trait Struct` in EmbeddedControls for details.""".stripMargin.format(tpt.tpe, structBaseTp, newCall))
       }
     }
 

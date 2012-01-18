@@ -30,11 +30,11 @@ object Test extends App {
       res.asInstanceOf[Rep[T]]
     }
   }
-  val foo: Rep[Row[Rep] { var xx: Int; val y: String }] = new Row[Rep] { var xx = 23; val y = "y" }
+  val foo: Rep[Struct[Rep] { var xx: Int; val y: String }] = new Struct[Rep] { var xx = 23; val y = "y" }
   foo.xx = 3 // this works because the row has a mutable member xx of the right type -- otherwise it'll fail to typecheck (see the neg/ case)
   println(foo.xx)
 
   (new Dynamic {
     def updateDynamic(n: String)(rhs: Any) = error("")
-  }).notInARow = 123 // make sure the regular applyDynamic (on targets of type Dynamic works too)
+  }).notInAStruct = 123 // make sure the regular applyDynamic (on targets of type Dynamic works too)
 }

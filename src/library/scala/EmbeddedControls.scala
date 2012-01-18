@@ -53,12 +53,12 @@ trait EmbeddedControls {
   def __equal(expr1: Any, expr2: Any): Boolean =
     throw new UnsupportedOperationException("__equal")
 
-  /** Row is a marker trait used to indicate that `new C { ... }` should be reified.
+  /** Struct is a marker trait used to indicate that `new C { ... }` should be reified.
    *
    * Selections on the result `e` of the reified object creation, `e.x_i`,
    * are treated specially, as outlined below.
    *
-   * If there's a type constructor `Rep` (of kind `* -> *`) so that `C <:< Row[Rep]`,
+   * If there's a type constructor `Rep` (of kind `* -> *`) so that `C <:< Struct[Rep]`,
    * the expression `new C { (val x_i: T_i = v_i)* }` is turned into
    * the call `__new(("x_i", (self_i: Rep[C{ (val x_i: T_i')* }]) => v_i')*)`,
    * which is typed with expected type `Rep[C{ (val x_i: T_i')* }]`
@@ -74,7 +74,7 @@ trait EmbeddedControls {
    * and `e` has type `Rep[C{ (val x_i: T_i')* }]` (where `C` meets the criteria outlined above),
    * `e.x_i` is turned into `e.selectDynamic[T_i]("x_i")`
    */
-  trait Row[+Rep[x]]
+  trait Struct[+Rep[x]]
 
   /**
    * given `def OptiML[R](b: => R) = new Scope[OptiML, OptiMLExp, R](b)`

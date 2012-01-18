@@ -2,5 +2,5 @@
 object Test {
   type Rep[x] = x
   def __new[T](args: (String, Boolean, Rep[T] => Rep[_])*): Rep[T] = error("")
-  val foo = new Row[Rep] { val bar = new Row[Rep] { val a = 1 } }
+  val foo = new Struct[Rep] { val bar = new Struct[Rep] { val a = 1 } }
 }

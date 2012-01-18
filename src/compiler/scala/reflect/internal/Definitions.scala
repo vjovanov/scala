@@ -246,7 +246,7 @@ trait Definitions extends reflect.api.StandardDefinitions {
       lazy val EmbeddedControls_ifThenElse = getMember(EmbeddedControlsClass, nme._ifThenElse)
       lazy val EmbeddedControls_whileDo = getMember(EmbeddedControlsClass, nme._whileDo)
       lazy val EmbeddedControls_doWhile = getMember(EmbeddedControlsClass, nme._doWhile)
-      lazy val EmbeddedControls_Row = getMember(EmbeddedControlsClass, tpnme.Row)
+      lazy val EmbeddedControls_Struct = getMember(EmbeddedControlsClass, tpnme.Struct)
       lazy val EmbeddedControls_Scope = getMember(EmbeddedControlsClass, tpnme.Scope)
       lazy val EmbeddedControls_new = getMember(EmbeddedControlsClass, nme._new)
       lazy val EmbeddedControls_newVar = getMember(EmbeddedControlsClass, nme._newVar)
