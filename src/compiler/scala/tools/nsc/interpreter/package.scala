@@ -22,7 +22,7 @@ package scala.tools.nsc
  *  InteractiveReader contains { history: History, completion: Completion }
  *  IMain contains { global: Global }
  */
-package object interpreter extends ReplConfig with ReplStrings with JlineCompat {
+package object interpreter extends ReplConfig with ReplStrings {
   type JFile          = java.io.File
   type JClass         = java.lang.Class[_]
   type JList[T]       = java.util.List[T]

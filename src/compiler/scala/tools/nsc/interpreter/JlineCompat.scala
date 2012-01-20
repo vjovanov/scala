@@ -24,6 +24,7 @@ trait JlineCompat {
   private[interpreter] implicit def jlineConsoleCompat(x: ConsoleReader) =
     new JlineConsoleReaderWrapper(x)
 }
+object JlineCompat extends JlineCompat { }
 
 trait Jline26Terminal extends Terminal {
   def init(): Unit

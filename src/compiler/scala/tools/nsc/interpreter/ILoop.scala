@@ -870,17 +870,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
       case None         =>
         // some post-initialization
         chooseReader(settings) match {
-          case x: JLineReader =>
-            if (sys.props contains replProps.jlineDebug.key) {
-              sys.props(replProps.jlineDebug.key) match {
-                case null | "" => 
-                  // x.consoleReader setDebug SimpleReader.defaultOut
-                case path      =>
-                  // x.consoleReader setDebug new PrintWriter(new FileWriter(path), true)
-              }
-            }
-            addThunk(x.consoleReader.postInit)
-            x
+          case x: JLineReader => addThunk(x.consoleReader.postInit) ; x
           case x              => x
         }
     }

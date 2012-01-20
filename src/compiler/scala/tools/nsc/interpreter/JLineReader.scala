@@ -12,6 +12,7 @@ import session._
 import scala.collection.JavaConverters._
 import Completion._
 import io.Streamable.slurp
+import JlineCompat._
 
 /**
  *  Reads from the console using JLine.

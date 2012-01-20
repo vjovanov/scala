@@ -10,6 +10,7 @@ import jline.Terminal
 import jline.console.{ ConsoleReader, CursorBuffer }
 import jline.console.completer.CompletionHandler
 import Completion._
+import JlineCompat._
 
 trait ConsoleReaderHelper extends ConsoleReader {
   def currentLine = getCursorBuffer.toString
