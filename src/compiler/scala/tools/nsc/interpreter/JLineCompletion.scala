@@ -6,8 +6,7 @@
 package scala.tools.nsc
 package interpreter
 
-import scala.tools.jline._
-import scala.tools.jline.console.completer._
+import jline._
 import Completion._
 import collection.mutable.ListBuffer
 

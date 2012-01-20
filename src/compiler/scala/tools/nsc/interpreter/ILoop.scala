@@ -7,7 +7,7 @@ package scala.tools.nsc
 package interpreter
 
 import Predef.{ println => _, _ }
-import java.io.{ BufferedReader, FileReader }
+import java.io.{ BufferedReader, FileReader, PrintWriter, FileWriter }
 import java.util.concurrent.locks.ReentrantLock
 import scala.sys.process.Process
 import session._
@@ -188,13 +188,9 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
         return "No history available."
 
       val xs      = words(line)
-      val current = history.index
       val count   = try xs.head.toInt catch { case _: Exception => defaultLines }
-      val lines   = history.asStrings takeRight count
-      val offset  = current - lines.size + 1
 
-      for ((line, index) <- lines.zipWithIndex)
-        echo("%3d  %s".format(index + offset, line))
+      history.asStrings takeRight count foreach echo
     }
   }
 
@@ -216,10 +212,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   /** Search the history */
   def searchHistory(_cmdline: String) {
     val cmdline = _cmdline.toLowerCase
-    val offset  = history.index - history.size + 1
-
-    for ((line, index) <- history.asStrings.zipWithIndex ; if line.toLowerCase contains cmdline)
-      echo("%d %s".format(index + offset, line))
+    history.asStrings filter (_.toLowerCase contains cmdline) foreach echo
   }
 
   private var currentPrompt = Properties.shellPromptString
@@ -877,7 +870,15 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
       case None         =>
         // some post-initialization
         chooseReader(settings) match {
-          case x: JLineReader => addThunk(x.consoleReader.postInit) ; x
+          case x: JLineReader =>
+            if (sys.props contains replProps.jlineDebug.key) {
+              sys.props(replProps.jlineDebug.key) match {
+                case null | "" => x.consoleReader setDebug SimpleReader.defaultOut
+                case path      => x.consoleReader setDebug new PrintWriter(new FileWriter(path), true)
+              }
+            }
+            addThunk(x.consoleReader.postInit)
+            x
           case x              => x
         }
     }

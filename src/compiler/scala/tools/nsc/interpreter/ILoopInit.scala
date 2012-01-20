@@ -22,8 +22,8 @@ trait ILoopInit {
     val welcomeMsg =
      """|Welcome to Scala %s (%s, Java %s).
         |Type in expressions to have them evaluated.
-        |Type :help for more information.""" .
-    stripMargin.format(versionString, javaVmName, javaVersion)
+        |Type :help for more information.
+        |""" .stripMargin.format(versionString, javaVmName, javaVersion)
     echo(welcomeMsg)
     replinfo("[info] started at " + new java.util.Date)
   }

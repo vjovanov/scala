@@ -2,7 +2,6 @@ Type in expressions to have them evaluated.
 Type :help for more information.
 
 scala> 
-
 scala> val x1 = 1
 x1: Int = 1
 
@@ -30,20 +29,17 @@ x1 + x2 + x3
 
 Forgetting all expression results and named terms: BippyBungus, x1, x2, x3
 Forgetting defined types: BippyBungus
-
 scala> x1 + x2 + x3
 <console>:8: error: not found: value x1
-              x1 + x2 + x3
-              ^
-
+            x1 + x2 + x3
+            ^
 scala> val x1 = 4
 x1: Int = 4
 
 scala> new BippyBungus
 <console>:8: error: not found: type BippyBungus
-              new BippyBungus
-                  ^
-
+            new BippyBungus
+                ^
 scala> class BippyBungus() { def f = 5 }
 defined class BippyBungus
 
@@ -51,5 +47,4 @@ scala> { new BippyBungus ; x1 }
 res2: Int = 4
 
 scala> 
-
 scala> 

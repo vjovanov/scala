@@ -2,9 +2,7 @@ Type in expressions to have them evaluated.
 Type :help for more information.
 
 scala> 
-
 scala> // basics
-
 scala> 3+4
 res0: Int = 7
 
@@ -38,9 +36,8 @@ scala> val bogus: anotherint = "hello"
  found   : String("hello")
  required: anotherint
     (which expands to)  Int
-       val bogus: anotherint = "hello"
-                               ^
-
+      val bogus: anotherint = "hello"
+                              ^
 scala> trait PointlessTrait
 defined trait PointlessTrait
 
@@ -50,21 +47,16 @@ y: Int = 3
 
 scala> println("hello")
 hello
-
 scala> 
-
 scala> // ticket #1513
-
 scala> val t1513 = Array(null)
 t1513: Array[Null] = Array(null)
 
 scala> // ambiguous toString problem from #547
-
 scala> val atom = new scala.xml.Atom()
 atom: scala.xml.Atom[Unit] = ()
 
 scala> // overriding toString problem from #1404
-
 scala> class S(override val toString : String)
 defined class S
 
@@ -72,24 +64,19 @@ scala> val fish = new S("fish")
 fish: S = fish
 
 scala> // Test that arrays pretty print nicely.
-
 scala> val arr = Array("What's", "up", "doc?") 
 arr: Array[String] = Array(What's, up, doc?)
 
 scala> // Test that arrays pretty print nicely, even when we give them type Any
-
 scala> val arrInt : Any = Array(1,2,3)
 arrInt: Any = Array(1, 2, 3)
 
 scala> // Test that nested arrays are pretty-printed correctly
-
 scala> val arrArrInt : Any = Array(Array(1, 2), Array(3, 4))
 arrArrInt: Any = Array(Array(1, 2), Array(3, 4))
 
 scala> 
-
 scala> // implicit conversions
-
 scala> case class Foo(n: Int)
 defined class Foo
 
@@ -103,9 +90,7 @@ scala> val bar: Bar = Foo(3)
 bar: Bar = Bar(3)
 
 scala> 
-
 scala> // importing from a previous result
-
 scala> import bar._
 import bar._
 
@@ -113,9 +98,7 @@ scala> val m = n
 m: Int = 3
 
 scala> 
-
 scala> // stressing the imports mechanism
-
 scala> val one = 1
 one: Int = 1
 
@@ -177,9 +160,7 @@ scala> val one = 1
 one: Int = 1
 
 scala> 
-
 scala> 
-
 scala> val x1 = 1
 x1: Int = 1
 
@@ -241,16 +222,12 @@ scala> val x20 = 1
 x20: Int = 1
 
 scala> 
-
 scala> val two = one + x5
 two: Int = 2
 
 scala> 
-
 scala> // handling generic wildcard arrays (#2386)
-
 scala> // It's put here because type feedback is an important part of it.
-
 scala> val xs: Array[_] = Array(1, 2)
 xs: Array[_] = Array(1, 2)
 
@@ -273,27 +250,19 @@ scala> xs map (x => (x, x))
 res7: Array[(_$1, _$1)] forSome { type _$1 } = Array((1,1), (2,2))
 
 scala> 
-
 scala> // interior syntax errors should *not* go into multi-line input mode.
-
 scala> // both of the following should abort immediately:
-
 scala> def x => y => z
 <console>:1: error: '=' expected but '=>' found.
-       def x => y => z
-             ^
-
+      def x => y => z
+            ^
 scala> [1,2,3]
 <console>:1: error: illegal start of definition
-       [1,2,3]
-       ^
-
+      [1,2,3]
+      ^
 scala> 
-
 scala> 
-
 scala> // multi-line XML
-
 scala> <a>
 <b
   c="c"
@@ -304,21 +273,15 @@ res8: scala.xml.Elem =
 <b c="c" d="dd"></b></a>
 
 scala> 
-
 scala> 
-
 scala> /*
   /*
     multi-line comment
   */
 */
-
 scala> 
-
 scala> 
-
 scala> // multi-line string
-
 scala> """
 hello
 there
@@ -330,14 +293,11 @@ there
 "
 
 scala> 
-
 scala> (1 +   // give up early by typing two blank lines
 
 
 You typed two blank lines.  Starting a new command.
-
 scala> // defining and using quoted names should work (ticket #323)
-
 scala> def `match` = 1 
 match: Int
 
@@ -345,9 +305,7 @@ scala> val x = `match`
 x: Int = 1
 
 scala> 
-
 scala> // multiple classes defined on one line
-
 scala> sealed class Exp; class Fact extends Exp; class Term extends Exp
 defined class Exp
 defined class Fact
@@ -360,16 +318,18 @@ scala> def f(e: Exp) = e match {  // non-exhaustive warning here
 missing combination            Exp
 missing combination           Term
 
-       def f(e: Exp) = e match {  // non-exhaustive warning here
-                       ^
+      def f(e: Exp) = e match {  // non-exhaustive warning here
+                      ^
 f: (e: Exp)Int
 
 scala> 
-
 scala> 
 plusOne: (x: Int)Int
+
 res0: Int = 6
+
 res0: String = after reset
+
 <console>:8: error: not found: value plusOne
-              plusOne(5) // should be undefined now
-              ^
+            plusOne(5) // should be undefined now
+            ^

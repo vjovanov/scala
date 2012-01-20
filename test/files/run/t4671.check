@@ -21,9 +21,7 @@ val s = scala.io.Source.fromFile(o.file)
 println(s.mkString(""))
 """.trim
 }
-
 scala> 
-
 scala> val s = scala.io.Source.fromFile(o.file)
 s: scala.io.BufferedSource = non-empty iterator
 
@@ -41,6 +39,5 @@ val s = scala.io.Source.fromFile(o.file)
 println(s.mkString(""))
 """.trim
 }
-
 
 scala> 

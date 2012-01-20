@@ -47,11 +47,10 @@ class ReflectiveRunner {
       else // auto detection
         new ConsoleFileManager
 
-    import fileManager.
-      { latestCompFile, latestLibFile, latestPartestFile, latestFjbgFile, latestScalapFile }
-    val files =
-      Array(latestCompFile, latestLibFile, latestPartestFile, latestFjbgFile, latestScalapFile) map (x => io.File(x))
-
+    val files = {
+      import fileManager._
+      Array(latestCompFile, latestLibFile, latestJlineFile, latestPartestFile, latestFjbgFile, latestScalapFile) map (x => io.File(x))
+    }
     val sepUrls   = files map (_.toURL)
     val sepLoader = new URLClassLoader(sepUrls, null)
 

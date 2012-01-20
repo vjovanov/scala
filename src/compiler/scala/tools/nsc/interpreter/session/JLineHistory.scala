@@ -10,46 +10,41 @@ package session
 /** A straight scalification of the jline interface which mixes
  *  in the sparse jline-independent one too.
  */
-trait JLineHistory extends JHistory with History {
+trait JLineHistory extends jline.History with History {
   def size: Int
-  def isEmpty: Boolean
-  def index: Int
   def clear(): Unit
-  def get(index: Int): CharSequence
-  def add(line: CharSequence): Unit
-  def replace(item: CharSequence): Unit
-
-  def entries(index: Int): JListIterator[JEntry]
-  def entries(): JListIterator[JEntry]
-  def iterator: JIterator[JEntry]
-
-  def current(): CharSequence
+  def flushBuffer(): Unit
+  def getHistory(index: Int): String
+  def addToHistory(line: String): Unit
+  def getMaxSize(): Int
+  def setMaxSize(maxSize: Int): Unit
+  // def getHistoryList(): JList[_]
+  def getCurrentIndex(): Int
+  def current(): String
   def previous(): Boolean
   def next(): Boolean
-  def moveToFirst(): Boolean
-  def moveToLast(): Boolean
-  def moveTo(index: Int): Boolean
+  def moveToFirstEntry(): Boolean
+  def moveToLastEntry(): Boolean
   def moveToEnd(): Unit
+  def searchBackwards(searchTerm: String): Int
+  def searchBackwards(searchTerm: String, startIndex: Int): Int
 }
 
 object JLineHistory {
-  class JLineFileHistory extends SimpleHistory with FileBackedHistory {
-    override def add(item: CharSequence): Unit = {
-      if (!isEmpty && last == item)
-        repldbg("Ignoring duplicate entry '" + item + "'")
-      else {
-        super.add(item)
-        addLineToFile(item)
-      }
-    }
-    override def toString = "History(size = " + size + ", index = " + index + ")"
-  }
+  import scala.util.Properties._
+  def defaultFile = new java.io.File(userHome, ".scala_history")
 
-  def apply(): JLineHistory =
-    try   { new JLineFileHistory }
-    catch { case x: Exception =>
-      Console.println("Error creating file history: memory history only. " + x)
-      util.Exceptional(x).show()
-      new SimpleHistory()
-    }
+  def apply(historyFile: java.io.File = defaultFile): JLineHistory = {
+    new FileHistory(historyFile)
+  }
+}
+
+
+class FileHistory(historyFile: java.io.File) extends jline.History(historyFile.getAbsoluteFile()) with SimpleHistory {
+  repldbg("Setting history file to " + historyFile)
+
+  // override def addToHistory(buffer: String) {
+  //   println("Add to history: " + buffer)
+  //   super.addToHistory(buffer)
+  // }
 }

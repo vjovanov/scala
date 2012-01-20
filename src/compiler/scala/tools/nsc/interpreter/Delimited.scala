@@ -6,7 +6,7 @@
 package scala.tools.nsc
 package interpreter
 
-import scala.tools.jline.console.completer.ArgumentCompleter.{ ArgumentDelimiter, ArgumentList }
+import jline.ArgumentCompletor.{ ArgumentDelimiter, ArgumentList }
 
 class JLineDelimiter extends ArgumentDelimiter {
   def toJLine(args: List[String], cursor: Int) = args match {
@@ -14,11 +14,11 @@ class JLineDelimiter extends ArgumentDelimiter {
     case xs     => new ArgumentList(xs.toArray, xs.size - 1, xs.last.length, cursor)
   }
 
-  def delimit(buffer: CharSequence, cursor: Int) = {
-    val p = Parsed(buffer.toString, cursor)
+  def delimit(buffer: String, cursor: Int) = {
+    val p = Parsed(buffer, cursor)
     toJLine(p.args, cursor)
   }
-  def isDelimiter(buffer: CharSequence, cursor: Int) = Parsed(buffer.toString, cursor).isDelimiter
+  def isDelimiter(buffer: String, cursor: Int) = Parsed(buffer, cursor).isDelimiter
 }
 
 trait Delimited {

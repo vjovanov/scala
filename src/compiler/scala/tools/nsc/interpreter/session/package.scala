@@ -10,13 +10,8 @@ package interpreter
  *  lines of text entered, types and terms defined, etc.
  */
 package object session {
-  type JIterator[T]       = java.util.Iterator[T]
-  type JListIterator[T]   = java.util.ListIterator[T]
-
-  type JEntry             = scala.tools.jline.console.history.History.Entry
-  type JHistory           = scala.tools.jline.console.history.History
-  type JMemoryHistory     = scala.tools.jline.console.history.MemoryHistory
-  type JPersistentHistory = scala.tools.jline.console.history.PersistentHistory
+  type JIterator[T]     = java.util.Iterator[T]
+  type JListIterator[T] = java.util.ListIterator[T]
 
   private[interpreter] implicit def charSequenceFix(x: CharSequence): String = x.toString
 }

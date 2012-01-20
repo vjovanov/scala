@@ -7,9 +7,7 @@ scala> :power
 ** scala.tools.nsc._ has been imported      **
 ** global._, definitions._ also imported    **
 ** Try  :help, :vals, power.<tab>           **
-
 scala> // guarding against "error: reference to global is ambiguous"
-
 scala> global.emptyValDef  // "it is imported twice in the same scope by ..."
 res0: $r.global.emptyValDef.type = private val _ = _
 

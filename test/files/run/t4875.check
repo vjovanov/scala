@@ -2,7 +2,6 @@ Type in expressions to have them evaluated.
 Type :help for more information.
 
 scala> 
-
 scala> import scala.reflect.Code
 import scala.reflect.Code
 
@@ -13,5 +12,4 @@ scala> codeOf((x: Iterable[_]) => throw new Exception)
 res0: scala.reflect.Code[Iterable[_] => Nothing] = Code(tree = ((x: Iterable[Any]) => throw new scala.`package`.Exception()), manifest = scala.Function1[scala.collection.Iterable[Any], Nothing])
 
 scala> 
-
 scala> 

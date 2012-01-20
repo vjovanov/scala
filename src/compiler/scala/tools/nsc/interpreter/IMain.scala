@@ -591,7 +591,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
        */
       if (succeeded) {
         if (printResults && result != "")
-          printMessage(result stripSuffix "\n")
+          printMessage(result)
         else if (isReplDebug) // show quiet-mode activity
           printMessage(result.trim.lines map ("[quiet] " + _) mkString "\n")
 

@@ -14,7 +14,7 @@ object Properties extends scala.util.PropertiesTrait {
   // settings based on jar properties
   def fileEndingString     = scalaPropOrElse("file.ending", ".scala|.java")
   def residentPromptString = scalaPropOrElse("resident.prompt", "\nnsc> ")
-  def shellPromptString    = scalaPropOrElse("shell.prompt", "\nscala> ")
+  def shellPromptString    = scalaPropOrElse("shell.prompt", "scala> ")
 
   // settings based on system properties
   def msilLibPath          = propOrNone("msil.libpath")

@@ -2,13 +2,9 @@ Type in expressions to have them evaluated.
 Type :help for more information.
 
 scala> 
-
 scala> 
-
 scala> // "Is this thing on?" Not working on first couple
-
 scala> // commands, needs investigation.
-
 scala> 123
 res0: Int = 123
 
@@ -19,7 +15,6 @@ scala> 123
 res2: Int = 123
 
 scala> 
-
 scala> object o {
   case class Bippy()
   case class Dingus {
@@ -41,7 +36,6 @@ warning: there were 3 unchecked warnings; re-run with -unchecked for details
 defined module o
 
 scala> 
-
 scala> :warnings
 <console>:3: warning: case classes without a parameter list have been deprecated;
 use either case objects or case classes with `()' as parameter list.
@@ -59,7 +53,5 @@ use either case objects or case classes with `()' as parameter list.
 use either case objects or case classes with `()' as parameter list.
   @serializable case class Heyooooo 
                                    ^
-
 scala> 
-
 scala> 

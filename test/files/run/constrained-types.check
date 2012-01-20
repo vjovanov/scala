@@ -2,14 +2,11 @@ Type in expressions to have them evaluated.
 Type :help for more information.
 
 scala> 
-
 scala> 
-
 scala> class Annot(obj: Any) extends annotation.Annotation with annotation.TypeConstraint
 defined class Annot
 
 scala> 
-
 scala> class A {
   val x = "hello"
   val y: Int @Annot(x) = 10
@@ -18,7 +15,6 @@ scala> class A {
 defined class A
 
 scala> 
-
 scala> val a = new A
 a: A = an A
 
@@ -32,7 +28,6 @@ scala> val y2 = a2.y   // should drop the annotation
 y2: Int = 10
 
 scala> 
-
 scala> object Stuff {
   val x = "hello"
   val y : Int @Annot(x) = 10
@@ -40,12 +35,10 @@ scala> object Stuff {
 defined module Stuff
 
 scala> 
-
 scala> val y = Stuff.y // should rewrite the annotation
 y: Int @Annot(Stuff.x) = 10
 
 scala> 
-
 scala> class B {
   val y: Int @Annot(Stuff.x) = 10
   override def toString = "a B"
@@ -53,7 +46,6 @@ scala> class B {
 defined class B
 
 scala> 
-
 scala> val b = new B
 b: B = a B
 
@@ -64,7 +56,6 @@ scala> def m(x: String): String @Annot(x) = x
 m: (x: String)String @Annot(x)
 
 scala> 
-
 scala> val three = "three"
 three: String = three
 
@@ -84,17 +75,14 @@ scala> val stuff = m("stuff") // should not crash
 stuff: String @Annot("stuff") = stuff
 
 scala> 
-
 scala> class peer extends annotation.Annotation // should not crash
 defined class peer
 
 scala> 
-
 scala> class NPE[T <: NPE[T] @peer] // should not crash
 defined class NPE
 
 scala> 
-
 scala> def m = {
   val x = "three"
   val y : String @Annot(x) = x
@@ -103,7 +91,6 @@ scala> def m = {
 m: String @Annot(x) forSome { val x: String }
 
 scala> 
-
 scala> def n(y: String) = {
   def m(x: String) : String @Annot(x) = {
     (if (x == "")
@@ -116,39 +103,31 @@ scala> def n(y: String) = {
 n: (y: String)String @Annot(x) forSome { val x: String }
 
 scala> 
-
 scala> class rep extends annotation.Annotation { }
 defined class rep
 
 scala> 
-
 scala> object A { val x = "hello" : String @ rep }
 defined module A
+
 warning: previously defined class A is not a companion to object A.
 Companions must be defined together; you may wish to use :paste mode for this.
-
 scala> 
-
 scala> val y = a.x // should drop the annotation
 y: String = hello
 
 scala> 
-
 scala> val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
 <console>:8: error: not found: value e
-       val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
-                              ^
-
+      val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
+                             ^
 scala> 
-
 scala> class Where(condition: Boolean) extends annotation.Annotation
 defined class Where
 
 scala> 
-
 scala> val x : Int @Where(self > 0 && self < 100) = 3
 x: Int @Where(self.>(0).&&(self.<(100))) = 3
 
 scala> 
-
 scala> 

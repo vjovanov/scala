@@ -71,11 +71,11 @@ class ConsoleFileManager extends FileManager {
     (CLASSPATH :: libs.toList) mkString pathSeparator
   }
 
+  private def prefixFileWith(parent: File, relPath: String) = (io.File(parent) / relPath).toCanonical
+  private def prefixFile(relPath: String) = (testParent / relPath).toCanonical
+
   def findLatest() {
     NestUI.verbose("test parent: "+testParent)
-
-    def prefixFileWith(parent: File, relPath: String) = (io.File(parent) / relPath).toCanonical
-    def prefixFile(relPath: String) = (testParent / relPath).toCanonical
 
     if (!testClasses.isEmpty) {
       testClassesDir = Path(testClasses.get).toCanonical.toDirectory
@@ -85,7 +85,6 @@ class ConsoleFileManager extends FileManager {
       latestLibFile     = testClassesDir / "library"
       latestCompFile    = testClassesDir / "compiler"
       latestPartestFile = testClassesDir / "partest"
-      latestFjbgFile    = testParent / "lib" / "fjbg.jar"
     }
     else if (testBuild.isDefined) {
       val dir = Path(testBuild.get)
@@ -152,8 +151,6 @@ class ConsoleFileManager extends FileManager {
 
       // run setup based on most recent time
       pairs(pairs.keys max)()
-
-      latestFjbgFile = prefixFile("lib/fjbg.jar")
     }
 
     LATEST_LIB = latestLibFile.getAbsolutePath
@@ -165,7 +162,8 @@ class ConsoleFileManager extends FileManager {
   var latestLibFile: File = _
   var latestCompFile: File = _
   var latestPartestFile: File = _
-  var latestFjbgFile: File = _
+  val latestFjbgFile: File = prefixFile("lib/fjbg.jar")
+  val latestJlineFile: File = prefixFile("lib/jline.jar")
   def latestScalapFile: File = (latestLibFile.parent / "scalap.jar").jfile
   var testClassesDir: Directory = _
   // initialize above fields
