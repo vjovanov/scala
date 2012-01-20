@@ -7,10 +7,12 @@ package scala.tools.nsc
 package interpreter
 package session
 
-/** A straight scalification of the jline interface which mixes
+import jline.console.history.{ History => JHistory, FileHistory => JFileHistory, _ }
+
+/** A straight scalification of the jline 1.0 interface which mixes
  *  in the sparse jline-independent one too.
  */
-trait JLineHistory extends jline.History with History {
+trait JLineHistory extends JHistory with History {
   def size: Int
   def clear(): Unit
   def flushBuffer(): Unit
@@ -18,16 +20,16 @@ trait JLineHistory extends jline.History with History {
   def addToHistory(line: String): Unit
   def getMaxSize(): Int
   def setMaxSize(maxSize: Int): Unit
-  // def getHistoryList(): JList[_]
+  def getHistoryList(): JListIterator[_]
   def getCurrentIndex(): Int
-  def current(): String
+  def current(): CharSequence // actually String in 1.0
   def previous(): Boolean
   def next(): Boolean
   def moveToFirstEntry(): Boolean
   def moveToLastEntry(): Boolean
   def moveToEnd(): Unit
-  def searchBackwards(searchTerm: String): Int
-  def searchBackwards(searchTerm: String, startIndex: Int): Int
+  // def searchBackwards(searchTerm: String): Int
+  // def searchBackwards(searchTerm: String, startIndex: Int): Int
 }
 
 object JLineHistory {
@@ -40,7 +42,7 @@ object JLineHistory {
 }
 
 
-class FileHistory(historyFile: java.io.File) extends jline.History(historyFile.getAbsoluteFile()) with SimpleHistory {
+class FileHistory(historyFile: java.io.File) extends JFileHistory(historyFile) with SimpleHistory with JlineHistoryWrapperTrait {
   repldbg("Setting history file to " + historyFile)
 
   // override def addToHistory(buffer: String) {

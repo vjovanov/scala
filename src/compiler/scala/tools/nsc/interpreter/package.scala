@@ -22,7 +22,7 @@ package scala.tools.nsc
  *  InteractiveReader contains { history: History, completion: Completion }
  *  IMain contains { global: Global }
  */
-package object interpreter extends ReplConfig with ReplStrings {
+package object interpreter extends ReplConfig with ReplStrings with JlineCompat {
   type JFile          = java.io.File
   type JClass         = java.lang.Class[_]
   type JList[T]       = java.util.List[T]
@@ -32,11 +32,6 @@ package object interpreter extends ReplConfig with ReplStrings {
   type OutputStream   = java.io.OutputStream
 
   val IR = Results
-
-  private[interpreter] implicit def javaCharSeqCollectionToScala(xs: JCollection[_ <: CharSequence]): List[String] = {
-    import collection.JavaConverters._
-    xs.asScala.toList map ("" + _)
-  }
 
   private[nsc] implicit def enrichClass[T](clazz: Class[T]) = new RichClass[T](clazz)
   private[nsc] implicit def enrichAnyRefWithTap[T](x: T) = new TapMaker(x)

@@ -231,7 +231,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     cmd("imports", "[name name ...]", "show import history, identifying sources of names", importsCommand),
     cmd("implicits", "[-v]", "show the implicits in scope", implicitsCommand),
     cmd("javap", "<path|class>", "disassemble a file or class name", javapCommand),
-    nullary("keybindings", "show how ctrl-[A-Z] and other keys are bound", keybindingsCommand),
+    // nullary("keybindings", "show how ctrl-[A-Z] and other keys are bound", keybindingsCommand),
     cmd("load", "<path>", "load and interpret a Scala file", loadCommand),
     nullary("paste", "enter paste mode: all input up to ctrl-D compiled together", pasteCommand),
     nullary("power", "enable power user mode", powerCmd),
@@ -453,14 +453,14 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
         else res.show()
       }
   }
-  private def keybindingsCommand(): Result = {
-    if (in.keyBindings.isEmpty) "Key bindings unavailable."
-    else {
-      echo("Reading jline properties for default key bindings.")
-      echo("Accuracy not guaranteed: treat this as a guideline only.\n")
-      in.keyBindings foreach (x => echo ("" + x))
-    }
-  }
+  // private def keybindingsCommand(): Result = {
+  //   if (in.keyBindings.isEmpty) "Key bindings unavailable."
+  //   else {
+  //     echo("Reading jline properties for default key bindings.")
+  //     echo("Accuracy not guaranteed: treat this as a guideline only.\n")
+  //     in.keyBindings foreach (x => echo ("" + x))
+  //   }
+  // }
   private def wrapCommand(line: String): Result = {
     def failMsg = "Argument to :wrap must be the name of a method with signature [T](=> T): T"
     val intp = ILoop.this.intp
@@ -873,8 +873,10 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
           case x: JLineReader =>
             if (sys.props contains replProps.jlineDebug.key) {
               sys.props(replProps.jlineDebug.key) match {
-                case null | "" => x.consoleReader setDebug SimpleReader.defaultOut
-                case path      => x.consoleReader setDebug new PrintWriter(new FileWriter(path), true)
+                case null | "" => 
+                  // x.consoleReader setDebug SimpleReader.defaultOut
+                case path      =>
+                  // x.consoleReader setDebug new PrintWriter(new FileWriter(path), true)
               }
             }
             addThunk(x.consoleReader.postInit)

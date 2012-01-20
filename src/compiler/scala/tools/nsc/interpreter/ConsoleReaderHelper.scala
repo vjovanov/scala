@@ -6,8 +6,9 @@
 package scala.tools.nsc
 package interpreter
 
-import jline.{ ConsoleReader, CursorBuffer }
-import jline.CompletionHandler
+import jline.Terminal
+import jline.console.{ ConsoleReader, CursorBuffer }
+import jline.console.completer.CompletionHandler
 import Completion._
 
 trait ConsoleReaderHelper extends ConsoleReader {
@@ -15,8 +16,8 @@ trait ConsoleReaderHelper extends ConsoleReader {
   def terminal    = getTerminal()
   def width       = terminal.getTerminalWidth()
   def height      = terminal.getTerminalHeight()
-  def paginate    = getUsePagination()
-  def paginate_=(value: Boolean) = setUsePagination(value)
+  def paginate    = this.getUsePagination()
+  def paginate_=(value: Boolean) = this.setUsePagination(value)
 
   def readOneKey(prompt: String): Int
   def eraseLine(): Unit
@@ -35,9 +36,9 @@ trait ConsoleReaderHelper extends ConsoleReader {
       // TODO: still not quite managing to erase --More-- and get
       // back to a scala prompt without another keypress.
       if (key == 'q') {
-        putString(getDefaultPrompt())
+        this.putString(this.getDefaultPrompt())
         redrawLine()
-        flushConsole()
+        this.flushConsole()
       }
     }
   }
