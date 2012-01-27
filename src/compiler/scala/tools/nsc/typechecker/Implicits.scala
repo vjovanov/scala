@@ -1277,29 +1277,7 @@ trait Implicits extends SourceContextUtils {
       if (result == SearchFailure && settings.debug.value)
         log("no implicits found for "+pt+" "+pt.typeSymbol.info.baseClasses+" "+implicitsOfExpectedType)
 
-      val updatedRes = pt/*.dealias*/ match {
-        case TypeRef(_, SourceContextClass, _) if updateSourceContext =>
-          val position = tree.pos.focus
-          val fileName = if (position.isDefined) position.source.file.absolute.path
-                         else "<unknown file>"
-          val methodName = methodNameOf(tree)
-          val receiver =   receiverOptOf(tree)
-          new SearchResult(typedPos(position) {
-            // use sourceInfoFactoryCall to construct SourceContext
-            val factoryCall = if (receiver.isEmpty)
-              sourceInfoFactoryCall(this, tree, "apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), sourceInfoTree(contextInfoChain(context0, tree)))
-            else
-              sourceInfoFactoryCall(this, tree, "apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), Literal(Constant(receiver.get.toString)), sourceInfoTree(contextInfoChain(context0, tree)))
-            Apply(Select(result.tree, "update"), List(factoryCall))
-          }, result.subst)
-        case TypeRef(_, SourceLocationClass, _) =>
-          val position = tree.pos.focus
-          new SearchResult(typedPos(position) {
-            sourceLocation(this, tree).tree
-          }, result.subst)
-        case _ => result
-      }
-      updatedRes
+      updatedWithSourceContext(this, tree, pt, context0, result, updateSourceContext)
     }
 
     def allImplicits: List[SearchResult] = {
