@@ -23,7 +23,7 @@ import util.Statistics._
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Implicits {
+trait Implicits extends SourceContextUtils {
   self: Analyzer =>
 
   import global._
@@ -1112,126 +1112,6 @@ trait Implicits {
         implicitInfoss1
     }
 
-    def contextSourceInfoChain(ctx: Context,
-                               stopAt: Context,
-                               prevValDef: Option[String]): List[(String, Int)] = {
-      if (ctx == stopAt)
-        List()
-      else ctx.tree match {
-        case vd @ ValDef(_, name, _, _) if prevValDef.isEmpty || (!prevValDef.get.equals(name.toString)) =>
-          (name.toString, vd.pos.line) :: contextSourceInfoChain(ctx.outer, stopAt, Some(name.toString))
-        //case app @ Apply(fun, args) if fun.symbol.isMethod =>
-        //  (fun.symbol.nameString, fun.pos.line) :: contextSourceInfoChain(ctx.outer, stopAt)
-        case _ =>
-          contextSourceInfoChain(ctx.outer, stopAt, None)
-      }
-    }
-
-    def contextInfoChain = context0.tree match {
-      case vd @ ValDef(_, name, _, _) =>
-        //println("current context tree is ValDef "+name)
-        contextSourceInfoChain(context0, context0.enclClass, None)
-      case _ =>
-        //println("current context tree: "+context0.tree)
-        val l = tree.pos match {
-          case NoPosition => 0
-          case _ => tree.pos.line
-        }
-        (null, l) :: contextSourceInfoChain(context0.outer, context0.outer.enclClass, None)
-    }
-
-    def sourceInfoTree(chain: List[(String, Int)]): Tree = chain match {
-      case (name, line) :: rest =>
-        val pairTree = gen.mkTuple(List(Literal(Constant(name)), Literal(Constant(line))))
-        Apply(Select(gen.mkAttributedRef(ListModule), nme.apply), List(pairTree))
-      case List() =>
-        gen.mkNil
-    }
-
-    /** Creates a tree that calls the factory method called constructor in object reflect.SourceContext */
-    def sourceInfoFactoryCall(constructor: String, args: Tree*): Tree =
-      if (args contains EmptyTree) EmptyTree
-      else typedPos(tree.pos.focus) {
-        Apply(
-          Select(gen.mkAttributedRef(SourceContextModule), constructor),
-          args.toList
-        )
-      }
-
-    private def methodNameOf(tree: Tree) = {
-      tree match {
-        case Apply(TypeApply(s, _), _) => s.symbol.name
-        case Apply(s@Select(_, _), _) => s.symbol.name
-        case Apply(s@Ident(_), _) => s.symbol.name
-        case Apply(Apply(s, _), _) => s.symbol.name
-        case s@Select(_, _) => s.symbol.name
-        case other => ""
-      }
-    }
-
-    private def receiverOptOf(tree: Tree) = {
-      try {
-        tree match {
-          case Apply(TypeApply(Select(recv, _), _), _) => Some(recv.symbol.name)
-          case Apply(Select(recv, _), _) => Some(recv.symbol.name)
-          case Select(recv, _) => Some(recv.symbol.name)
-          case _ => None
-        }
-      } catch {
-        case npe: NullPointerException =>
-          None
-      }
-    }
-
-    private def sourceInfo(): SearchResult = {
-      def srcInfo()(implicit from: List[Symbol] = List(), to: List[Type] = List()): SearchResult = {
-        implicit def wrapResult(tree: Tree): SearchResult =
-          if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to))
-
-        val methodName = methodNameOf(tree)
-        val receiver =   receiverOptOf(tree)
-
-        //println("context source info chain:")
-        //println(contextInfoChain)
-        //println("source info tree:")
-        //println(sourceInfoTree(contextInfoChain))
-
-        val position = tree.pos.focus
-        val fileName = if (position.isDefined) position.source.file.absolute.path
-                       else "<unknown file>"
-        if (receiver.isEmpty)
-          sourceInfoFactoryCall("apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), sourceInfoTree(contextInfoChain))
-        else
-          sourceInfoFactoryCall("apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), Literal(Constant(receiver.get.toString)), sourceInfoTree(contextInfoChain))
-      }
-
-      srcInfo()
-    }
-
-    private def sourceLocation(): SearchResult = {
-      /** Creates a tree that calls the factory method called constructor in object reflect.SourceLocation */
-      def sourceLocationFactoryCall(constructor: String, args: Tree*): Tree =
-        if (args contains EmptyTree) EmptyTree
-        else typedPos(tree.pos.focus) {
-          Apply(
-            Select(gen.mkAttributedRef(SourceLocationModule), constructor),
-            args.toList
-          )
-        }
-
-      def srcLocation()(implicit from: List[Symbol] = List(), to: List[Type] = List()): SearchResult = {
-        implicit def wrapResult(tree: Tree): SearchResult =
-          if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to))
-
-        val position = tree.pos.focus
-        val fileName = if (position.isDefined) position.source.file.absolute.path
-                       else "<unknown file>"
-        sourceLocationFactoryCall("apply", Literal(Constant(position.line)), Literal(Constant(position.point)), Literal(Constant(fileName)))
-      }
-
-      srcLocation()
-    }
-
     /** Creates a tree that calls the relevant factory method in object
       * reflect.Manifest for type 'tp'. An EmptyTree is returned if
       * no manifest is found. todo: make this instantiate take type params as well?
@@ -1382,7 +1262,7 @@ trait Implicits {
           pt.dealias match {
             case TypeRef(_, SourceContextClass, _) =>
               // construct new SourceContext instance
-              result = sourceInfo()
+              result = sourceInfo(this, context0, tree)
               // there is no existing SourceContext to chain with
               updateSourceContext = false
             case _ =>
@@ -1397,29 +1277,7 @@ trait Implicits {
       if (result == SearchFailure && settings.debug.value)
         log("no implicits found for "+pt+" "+pt.typeSymbol.info.baseClasses+" "+implicitsOfExpectedType)
 
-      val updatedRes = pt/*.dealias*/ match {
-        case TypeRef(_, SourceContextClass, _) if updateSourceContext =>
-          val position = tree.pos.focus
-          val fileName = if (position.isDefined) position.source.file.absolute.path
-                         else "<unknown file>"
-          val methodName = methodNameOf(tree)
-          val receiver =   receiverOptOf(tree)
-          new SearchResult(typedPos(position) {
-            // use sourceInfoFactoryCall to construct SourceContext
-            val factoryCall = if (receiver.isEmpty)
-              sourceInfoFactoryCall("apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), sourceInfoTree(contextInfoChain))
-            else
-              sourceInfoFactoryCall("apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), Literal(Constant(receiver.get.toString)), sourceInfoTree(contextInfoChain))
-            Apply(Select(result.tree, "update"), List(factoryCall))
-          }, result.subst)
-        case TypeRef(_, SourceLocationClass, _) =>
-          val position = tree.pos.focus
-          new SearchResult(typedPos(position) {
-            sourceLocation().tree
-          }, result.subst)
-        case _ => result
-      }
-      updatedRes
+      updatedWithSourceContext(this, tree, pt, context0, result, updateSourceContext)
     }
 
     def allImplicits: List[SearchResult] = {
