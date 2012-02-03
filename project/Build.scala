@@ -77,10 +77,11 @@ object ScalaBuild extends Build with Layers {
   )
 
   // Collections of projects to run 'compile' on.
-  lazy val compiledProjects = Seq(quickLib, quickComp, continuationsLibrary, actors, swing, dbc, forkjoin, fjbg)
+  lazy val compiledProjects = Seq(quickLib, quickComp)//, continuationsLibrary, actors, swing, dbc, forkjoin, fjbg)
   // Collection of projects to 'package' and 'publish' together.
-  lazy val packagedBinaryProjects = Seq(scalaLibrary, scalaCompiler, swing, dbc, continuationsPlugin, jline, scalap)
-  lazy val partestRunProjects = Seq(testsuite, continuationsTestsuite)
+  lazy val packagedBinaryProjects = Seq(scalaLibrary, scalaCompiler)//, swing, dbc, continuationsPlugin, jline, scalap)
+  
+  lazy val partestRunProjects = Seq(testsuite) // continuationsTestsuite)
   
   private def epflPomExtra = (
     <xml:group>
@@ -112,7 +113,7 @@ object ScalaBuild extends Build with Layers {
 
   // Settings for root project.  These are aggregate tasks against the rest of the build.
   def projectSettings: Seq[Setting[_]] = publishSettings ++ Seq(
-    doc in Compile <<= (doc in documentation in Compile).identity,
+    // doc in Compile <<= (doc in documentation in Compile).identity,
     // These next two aggregate commands on several projects and return results that are to be ignored by remaining tasks.
     compile in Compile <<= compiledProjects.map(p => compile in p in Compile).join.map(_.head),
     // TODO - just clean target? i.e. target map IO.deleteRecursively
@@ -121,8 +122,8 @@ object ScalaBuild extends Build with Layers {
     // TODO - Make sure scalaLibrary has packageDoc + packageSrc from documentation attached...
     publish <<= packagedBinaryProjects.map(p => publish in p).join.map(_.head),
     publishLocal <<= packagedBinaryProjects.map(p => publishLocal in p).join.map(_.head),
-    packageDoc in Compile <<= (packageDoc in documentation in Compile).identity,
-    packageSrc in Compile <<= (packageSrc in documentation in Compile).identity,
+    // packageDoc in Compile <<= (packageDoc in documentation in Compile).identity,
+    // packageSrc in Compile <<= (packageSrc in documentation in Compile).identity,
     test in Test <<= (runPartest in testsuite, runPartest in continuationsTestsuite, checkSame in testsuite) map { (a,b,c) => () },
     lockerLock <<= (lockFile in lockerLib, lockFile in lockerComp, compile in Compile in lockerLib, compile in Compile in lockerComp) map { (lib, comp, _, _) =>
       Seq(lib,comp).foreach(f => IO.touch(f))
@@ -159,7 +160,8 @@ object ScalaBuild extends Build with Layers {
                              publishArtifact in packageSrc := false,
                              target <<= (baseDirectory, name) apply (_ / "target" / _),
                              (classDirectory in Compile) <<= target(_ / "classes"),
-                             javacOptions ++= Seq("-target", "1.5", "-source", "1.5"),
+                             // javacOptions ++= Seq("-target", "1.5", "-source", "1.5"),
+                             javacOptions in doc ++= Seq("-source", "1.5"),
                              scalaSource in Compile <<= (baseDirectory, name) apply (_ / "src" / _),
                              javaSource in Compile <<= (baseDirectory, name) apply (_ / "src" / _),
                              autoScalaLibrary := false,
@@ -299,8 +301,8 @@ object ScalaBuild extends Build with Layers {
     exportJars := true,
     autoScalaLibrary := false,
     unmanagedJars in Compile := Seq(),
-    packageDoc in Compile <<= (packageDoc in documentation in Compile).identity,
-    packageSrc in Compile <<= (packageSrc in documentation in Compile).identity,
+    // packageDoc in Compile <<= (packageDoc in documentation in Compile).identity,
+    // packageSrc in Compile <<= (packageSrc in documentation in Compile).identity,
     fullClasspath in Runtime <<= (exportedProducts in Compile).identity,
     quickScalaInstance,
     target <<= (baseDirectory, name) apply (_ / "target" / _)
@@ -367,6 +369,7 @@ object ScalaBuild extends Build with Layers {
   // TODO - Migrate this into the dist project.
   // Scaladocs
   def distScalaInstance = makeScalaReference("dist", scalaLibrary, scalaCompiler, fjbg)
+  
   lazy val documentationSettings: Seq[Setting[_]] = dependentProjectSettings ++ Seq(
     // TODO - Make these work for realz.
     defaultExcludes in unmanagedSources in Compile := ((".*"  - ".") || HiddenFileFilter ||
