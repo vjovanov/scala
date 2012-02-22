@@ -427,7 +427,7 @@ abstract class ExplicitOuter extends InfoTransform
       }
 
       val t = atPos(tree.pos) {
-        val context     = MatrixContext(currentRun.currentUnit, transform, localTyper, currentOwner, tree.tpe)
+        val context     = MatrixContext(currentUnit, transform, localTyper, currentOwner, tree.tpe)
         val t_untyped   = handlePattern(nselector, ncases, checkExhaustive, context)
 
         /* if @switch annotation is present, verify the resulting tree is a Match */
@@ -506,7 +506,7 @@ abstract class ExplicitOuter extends InfoTransform
           val outerVal = atPos(tree.pos)(qual match {
             // it's a call between constructors of same class
             case _: This  =>
-              assert(outerParam != NoSymbol)
+              assert(outerParam != NoSymbol, tree)
               outerValue
             case _        =>
               gen.mkAttributedQualifier(qual.tpe.prefix match {
@@ -517,7 +517,7 @@ abstract class ExplicitOuter extends InfoTransform
           super.transform(treeCopy.Apply(tree, sel, outerVal :: args))
 
         // entry point for pattern matcher translation
-        case mch: Match =>
+        case mch: Match if (!opt.virtPatmat) => // don't use old pattern matcher as fallback when the user wants the virtualizing one
           matchTranslation(mch)
 
         case _ =>

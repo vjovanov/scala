@@ -9,7 +9,8 @@ package transform
 import symtab._
 import Flags._
 import util.TreeSet
-import scala.collection.mutable.{ LinkedHashMap, ListBuffer }
+import scala.collection.{ mutable, immutable }
+import scala.collection.mutable.LinkedHashMap
 
 abstract class LambdaLift extends InfoTransform {
   import global._
@@ -63,6 +64,11 @@ abstract class LambdaLift extends InfoTransform {
 
     /** The set of symbols that need to be renamed. */
     private val renamable = newSymSet
+
+    // (trait, name) -> owner
+    private val localTraits      = mutable.HashMap[(Symbol, Name), Symbol]()
+    // (owner, name) -> implClass
+    private val localImplClasses = mutable.HashMap[(Symbol, Name), Symbol]()
 
     /** A flag to indicate whether new free variables have been found */
     private var changedFreeVars: Boolean = _
@@ -152,7 +158,26 @@ abstract class LambdaLift extends InfoTransform {
         tree match {
           case ClassDef(_, _, _, _) =>
             liftedDefs(tree.symbol) = Nil
-            if (sym.isLocal) renamable addEntry sym
+            if (sym.isLocal) {
+              // Don't rename implementation classes independently of their interfaces. If
+              // the interface is to be renamed, then we will rename the implementation
+              // class at that time. You'd think we could call ".implClass" on the trait
+              // rather than collecting them in another map, but that seems to fail for
+              // exactly the traits being renamed here (i.e. defined in methods.)
+              //
+              // !!! - it makes no sense to have methods like "implClass" and
+              // "companionClass" which fail for an arbitrary subset of nesting
+              // arrangements, and then have separate methods which attempt to compensate
+              // for that failure. There should be exactly one method for any given
+              // entity which always gives the right answer.
+              if (sym.isImplClass)
+                localImplClasses((sym.owner, nme.interfaceName(sym.name))) = sym
+              else {
+                renamable addEntry sym
+                if (sym.isTrait)
+                  localTraits((sym, sym.name)) = sym.owner
+              }
+            }
           case DefDef(_, _, _, _, _, _) =>
             if (sym.isLocal) {
               renamable addEntry sym
@@ -196,8 +221,8 @@ abstract class LambdaLift extends InfoTransform {
         for (caller <- called.keys ; callee <- called(caller) ; fvs <- free get callee ; fv <- fvs)
           markFree(fv, caller)
       } while (changedFreeVars)
-
-      for (sym <- renamable) {
+      
+      def renameSym(sym: Symbol) {
         val originalName = sym.name
         val base = sym.name + nme.NAME_JOIN_STRING + (
           if (sym.isAnonymousFunction && sym.owner.isMethod)
@@ -209,6 +234,32 @@ abstract class LambdaLift extends InfoTransform {
           else unit.freshTermName(base)
 
         debuglog("renaming in %s: %s => %s".format(sym.owner.fullLocationString, originalName, sym.name))
+      }
+
+      /** Rename a trait's interface and implementation class in coordinated fashion.
+       */
+      def renameTrait(traitSym: Symbol, implSym: Symbol) {
+        val originalImplName = implSym.name
+        renameSym(traitSym)
+        implSym.name = nme.implClassName(traitSym.name)
+
+        debuglog("renaming impl class in step with %s: %s => %s".format(traitSym, originalImplName, implSym.name))
+      }
+      
+      for (sym <- renamable) {
+        // If we renamed a trait from Foo to Foo$1, we must rename the implementation
+        // class from Foo$class to Foo$1$class.  (Without special consideration it would
+        // become Foo$class$1 instead.) Since the symbols are being renamed out from
+        // under us, and there's no reliable link between trait symbol and impl symbol,
+        // we have maps from ((trait, name)) -> owner and ((owner, name)) -> impl.
+        localTraits remove ((sym, sym.name)) match {
+          case None        => renameSym(sym)
+          case Some(owner) =>
+            localImplClasses remove ((owner, sym.name)) match {
+              case Some(implSym)  => renameTrait(sym, implSym)
+              case _              => renameSym(sym) // pure interface, no impl class
+            }
+        }
       }
 
       atPhase(phase.next) {
@@ -369,7 +420,7 @@ abstract class LambdaLift extends InfoTransform {
               case Try(block, catches, finalizer) =>
                 Try(refConstr(block), catches map refConstrCase, finalizer)
               case _ => 
-                Apply(Select(New(TypeTree(sym.tpe)), nme.CONSTRUCTOR), List(expr))
+                New(sym, expr)
             }
             def refConstrCase(cdef: CaseDef): CaseDef = 
               CaseDef(cdef.pat, cdef.guard, refConstr(cdef.body))
