@@ -267,6 +267,9 @@ object Manifest {
       override def toString = parents.mkString(" with ")
     }
 
+  /** Manifest for the refined type
+    * `parent { val fieldNames(0) : fieldTypes(0) ; ... ; val fieldNames(n) : fieldTypes(n) }`.
+    */
   def refinedType[T](parent: Manifest[_], fieldNames: List[String], fieldTypes: List[Manifest[_]]): Manifest[T] =
     new RefinedManifest[T] {
       def erasure = parent.erasure
