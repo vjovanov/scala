@@ -245,6 +245,17 @@ object ClassManifest {
       override val typeArguments = args.toList
       override def toString = prefix.toString+"#"+name+argString
     }
+
+  /** Manifest for the refined type
+    * `parent { val fieldNames(0) : fieldTypes(0) ; ... ; val fieldNames(n) : fieldTypes(n) }`.
+    */
+  def refinedType[T](parent: Manifest[_], fieldNames: List[String], fieldTypes: List[Manifest[_]]): Manifest[T] =
+    new RefinedManifest[T] {
+      def erasure = parent.erasure
+      def fields = fieldNames zip fieldTypes
+      override def toString = parent + (fieldNames zip fieldTypes).map{case(n, t) => "val "+ n +" : "+ t}.mkString("{","; ", "}")
+    }
+
 }
 
 /** Manifest for the class type `clazz[args]`, where `clazz` is
