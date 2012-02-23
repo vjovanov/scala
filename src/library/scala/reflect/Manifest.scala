@@ -271,6 +271,7 @@ object Manifest {
     new RefinedManifest[T] {
       def erasure = parent.erasure
       def fields = fieldNames zip fieldTypes
+      override def toString = parent + (fieldNames zip fieldTypes).map{case(n, t) => "val "+ n +" : "+ t}.mkString("{","; ", "}")
     }
 
   /** A generic manifest factory from a reflect.Type. Except where

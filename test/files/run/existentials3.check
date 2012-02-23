@@ -5,8 +5,8 @@ Object with Test$ToS with scala.ScalaObject
 Object with Test$ToS with scala.ScalaObject
 scala.Function0[Object with Test$ToS with scala.ScalaObject]
 scala.Function0[Object with Test$ToS with scala.ScalaObject]
-_ <: scala.reflect.Manifest$$anon$15@45d6a56e
-_ <: scala.reflect.Manifest$$anon$15@45d6a56e
+_ <: Object with _ <: Object with Object{} with Test$ToS with scala.ScalaObject{}
+_ <: Object with _ <: Object{} with _ <: Object{} with Test$ToS with scala.ScalaObject{}
 scala.collection.immutable.List[Object with scala.collection.Seq[Int] with scala.ScalaObject]
 scala.collection.immutable.List[Object with scala.collection.Seq[_ <: Int] with scala.ScalaObject]
 _ <: scala.runtime.AbstractFunction0[_ <: Object with Test$ToS with scala.ScalaObject with scala.Product with scala.Serializable] with scala.ScalaObject with scala.Serializable with java.lang.Object
@@ -16,7 +16,7 @@ Object with Test$ToS with scala.ScalaObject
 Object with Test$ToS with scala.ScalaObject
 scala.Function0[Object with Test$ToS with scala.ScalaObject]
 scala.Function0[Object with Test$ToS with scala.ScalaObject]
-_ <: scala.reflect.Manifest$$anon$15@45d6a56e
-_ <: scala.reflect.Manifest$$anon$15@45d6a56e
+_ <: Object with _ <: Object with Object{} with Test$ToS with scala.ScalaObject{}
+_ <: Object with _ <: Object{} with _ <: Object{} with Test$ToS with scala.ScalaObject{}
 scala.collection.immutable.List[Object with scala.collection.Seq[Int] with scala.ScalaObject]
 scala.collection.immutable.List[Object with scala.collection.Seq[_ <: Int] with scala.ScalaObject]
