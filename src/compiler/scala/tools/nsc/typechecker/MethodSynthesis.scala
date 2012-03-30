@@ -18,7 +18,7 @@ trait MethodSynthesis {
   import global._
   import definitions._
   import CODE._
-  
+
   object synthesisUtil {
     type M[T]  = Manifest[T]
     type CM[T] = ClassManifest[T]
@@ -39,7 +39,7 @@ trait MethodSynthesis {
 
       typeRef(container.typeConstructor.prefix, container, args map (_.tpe))
     }
-    
+
     def companionType[T](implicit m: M[T]) =
       getRequiredModule(m.erasure.getName).tpe
 
@@ -69,9 +69,12 @@ trait MethodSynthesis {
   import synthesisUtil._
 
   class ClassMethodSynthesis(val clazz: Symbol, localTyper: Typer) {
+    def mkThis = This(clazz) setPos clazz.pos.focus
+    def mkThisSelect(sym: Symbol) = atPos(clazz.pos.focus)(Select(mkThis, sym))
+
     private def isOverride(name: TermName) =
       clazzMember(name).alternatives exists (sym => !sym.isDeferred && (sym.owner != clazz))
-    
+
     def newMethodFlags(name: TermName) = {
       val overrideFlag = if (isOverride(name)) OVERRIDE else 0L
       overrideFlag | SYNTHETIC
@@ -82,7 +85,7 @@ trait MethodSynthesis {
     }
 
     private def finishMethod(method: Symbol, f: Symbol => Tree): Tree =
-      logResult("finishMethod")(localTyper typed ValOrDefDef(method, f(method)))
+      localTyper typed ValOrDefDef(method, f(method))
 
     private def createInternal(name: Name, f: Symbol => Tree, info: Type): Tree = {
       val m = clazz.newMethod(name.toTermName, clazz.pos.focus, newMethodFlags(name))
@@ -166,6 +169,16 @@ trait MethodSynthesis {
     self: Namer =>
 
     import NamerErrorGen._
+    
+    /** TODO - synthesize method.
+     */
+    def enterImplicitClass(tree: ClassDef) {
+      /** e.g.
+      val ClassDef(mods, name, tparams, impl) = tree
+      val converter = ImplicitClassConverter(tree).createAndEnterSymbol()
+      ...
+      */
+    }
 
     def enterGetterSetter(tree: ValDef) {
       val ValDef(mods, name, _, _) = tree
@@ -192,17 +205,13 @@ trait MethodSynthesis {
       enterBeans(tree)
     }
     def finishGetterSetter(typer: Typer, stat: Tree): List[Tree] = stat match {
-      case vd @ ValDef(mods, name, tpt, rhs) if !noFinishGetterSetter(vd) =>
+      case vd @ ValDef(mods, name, tpt, rhs) if !noFinishGetterSetter(vd) && !vd.symbol.isLazy =>
         // If we don't save the annotations, they seem to wander off.
         val annotations = stat.symbol.initialize.annotations
-        val trees = (
-          allValDefDerived(vd)
-                  map (acc => atPos(vd.pos.focus)(acc derive annotations))
-            filterNot (_ eq EmptyTree)
+        ( allValDefDerived(vd)
+                map (acc => atPos(vd.pos.focus)(acc derive annotations))
+          filterNot (_ eq EmptyTree)
         )
-        log(trees.mkString("Accessor trees:\n  ", "\n  ", "\n"))
-        if (vd.symbol.isLazy) List(stat)
-        else trees
       case _ =>
         List(stat)
     }
@@ -227,14 +236,33 @@ trait MethodSynthesis {
     }
 
     trait Derived {
+      /** The tree from which we are deriving a synthetic member. */
+      def tree: Tree
       def name: TermName
       def flagsMask: Long
       def flagsExtra: Long
+      
+      /** The tree, symbol, and type completer for the synthetic member. */
       def completer(sym: Symbol): Type
+      def derivedSym: Symbol
+      def derivedTree: Tree
     }
-    trait DerivedFromValDef extends Derived {
-      /** The declaration from which we are deriving.
-       */
+    
+    trait DerivedFromMemberDef extends Derived {
+      def tree: MemberDef
+      
+      // Final methods to make the rest easier to reason about.
+      final def mods               = tree.mods
+      final def basisSym           = tree.symbol
+      final def enclClass          = basisSym.enclClass
+      final def derivedFlags: Long = basisSym.flags & flagsMask | flagsExtra
+    }
+    
+    trait DerivedFromClassDef extends DerivedFromMemberDef {
+      def tree: ClassDef
+    }
+
+    trait DerivedFromValDef extends DerivedFromMemberDef {
       def tree: ValDef
 
       /** Which meta-annotation is associated with this kind of entity.
@@ -242,14 +270,8 @@ trait MethodSynthesis {
        */
       def category: Symbol
 
-      // Final methods to make the rest easier to reason about.
-      final def mods      = tree.mods
-      final def basisSym  = tree.symbol
-      final def enclClass = basisSym.enclClass
-
       final def completer(sym: Symbol) = namerOf(sym).accessorTypeCompleter(tree, isSetter)
       final def fieldSelection         = Select(This(enclClass), basisSym)
-      final def derivedFlags: Long     = basisSym.flags & flagsMask | flagsExtra
       final def derivedMods: Modifiers = mods & flagsMask | flagsExtra mapAnnotations (_ => Nil)
 
       def derivedSym: Symbol = tree.symbol
@@ -282,7 +304,7 @@ trait MethodSynthesis {
         }
       }
       private def logDerived(result: Tree): Tree = {
-        log("[+derived] " + ojoin(mods.defaultFlagString, basisSym.accurateKindString, basisSym.getterName.decode)
+        debuglog("[+derived] " + ojoin(mods.defaultFlagString, basisSym.accurateKindString, basisSym.getterName.decode)
           + " (" + derivedSym + ")\n        " + result)
 
         result
@@ -309,6 +331,19 @@ trait MethodSynthesis {
       private def setterDef = DefDef(derivedSym, setterRhs)
       override def derivedTree: Tree = if (setterParam == NoSymbol) EmptyTree else setterDef
     }
+
+    /** A synthetic method which performs the implicit conversion implied by
+     *  the declaration of an implicit class.  Yet to be written.
+     */
+    case class ImplicitClassConverter(tree: ClassDef) extends DerivedFromClassDef {
+      def completer(sym: Symbol): Type = ???
+      def derivedSym: Symbol           = ???
+      def derivedTree: DefDef          = ???
+      def flagsExtra: Long             = ???
+      def flagsMask: Long              = ???
+      def name: TermName               = ???
+    }
+    
     case class Getter(tree: ValDef) extends DerivedGetter {
       def name       = tree.name
       def category   = GetterTargetClass
@@ -344,7 +379,7 @@ trait MethodSynthesis {
         if (mods.isDeferred)
           tpt setOriginal tree.tpt
 
-        // TODO - reconcile this with the DefDef creator in Trees (which 
+        // TODO - reconcile this with the DefDef creator in Trees (which
         //   at this writing presented no way to pass a tree in for tpt.)
         atPos(derivedSym.pos) {
           DefDef(
@@ -376,7 +411,7 @@ trait MethodSynthesis {
       override def keepClean = !mods.isParamAccessor
       override def derivedTree = (
         if (mods.isDeferred) EmptyTree
-        else treeCopy.ValDef(tree, mods | flagsExtra, name, tree.tpt, tree.rhs)
+        else copyValDef(tree)(mods = mods | flagsExtra, name = this.name)
       )
     }
     case class Param(tree: ValDef) extends DerivedFromValDef {

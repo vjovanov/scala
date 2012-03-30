@@ -43,5 +43,6 @@ abstract class MutableSettings extends AbsSettings {
   def Yrecursion: IntSetting
   def maxClassfileName: IntSetting
   def Xexperimental: BooleanSetting
+  def YvirtPatmat: BooleanSetting
   def Yvirtualize: BooleanSetting
 }

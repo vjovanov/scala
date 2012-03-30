@@ -262,7 +262,7 @@ abstract class Inliners extends SubComponent {
       def inlineWithoutTFA(inputBlocks: Traversable[BasicBlock], callsites: Function1[BasicBlock, List[opcodes.CALL_METHOD]]): Int = {
         var inlineCount = 0
         import scala.util.control.Breaks._
-        for(x <- inputBlocks; val easyCake = callsites(x); if easyCake.nonEmpty) {
+        for(x <- inputBlocks; easyCake = callsites(x); if easyCake.nonEmpty) {
           breakable {
             for(ocm <- easyCake) {
               assert(ocm.method.isEffectivelyFinal && ocm.method.owner.isEffectivelyFinal)
@@ -466,8 +466,10 @@ abstract class Inliners extends SubComponent {
       }
     }
 
-    private def isHigherOrderMethod(sym: Symbol) =
-      sym.isMethod && atPhase(currentRun.erasurePhase.prev)(sym.info.paramTypes exists isFunctionType)
+    private def isHigherOrderMethod(sym: Symbol) = (
+         sym.isMethod
+      && beforeExplicitOuter(sym.info.paramTypes exists isFunctionType) // was "at erasurePhase.prev"
+    )
 
     /** Should method 'sym' being called in 'receiver' be loaded from disk? */
     def shouldLoadImplFor(sym: Symbol, receiver: Symbol): Boolean = {
@@ -550,9 +552,9 @@ abstract class Inliners extends SubComponent {
         val activeHandlers = caller.handlers filter (_ covered block)
 
         /* Map 'original' blocks to the ones inlined in the caller. */
-        val inlinedBlock: mutable.Map[BasicBlock, BasicBlock] = new mutable.HashMap
+        val inlinedBlock = mutable.Map[BasicBlock, BasicBlock]()
 
-        val varsInScope: mutable.Set[Local] = mutable.HashSet() ++= block.varsInScope
+        val varsInScope = mutable.HashSet[Local]() ++= block.varsInScope
 
         /** Side effects varsInScope when it sees SCOPE_ENTERs. */
         def instrBeforeFilter(i: Instruction): Boolean = {
@@ -705,7 +707,8 @@ abstract class Inliners extends SubComponent {
       }
 
       def isStampedForInlining(stackLength: Int) =
-        !sameSymbols && inc.m.hasCode && shouldInline && isSafeToInline(stackLength)
+        !sameSymbols && inc.m.hasCode && shouldInline &&
+        isSafeToInline(stackLength) // `isSafeToInline()` must be invoked last in this AND expr bc it mutates the `knownSafe` and `knownUnsafe` maps for good.
 
       def logFailure(stackLength: Int) = log(
         """|inline failed for %s:
@@ -722,6 +725,7 @@ abstract class Inliners extends SubComponent {
 
       def failureReason(stackLength: Int) =
         if (!inc.m.hasCode) "bytecode was unavailable"
+        else if (inc.m.symbol.hasFlag(Flags.SYNCHRONIZED)) "method is synchronized"
         else if (!isSafeToInline(stackLength)) "it is unsafe (target may reference private fields)"
         else "of a bug (run with -Ylog:inline -Ydebug for more information)"
 
@@ -762,8 +766,8 @@ abstract class Inliners extends SubComponent {
             true
           }
 
-        if (!inc.m.hasCode || inc.isRecursive)
-          return false
+        if (!inc.m.hasCode || inc.isRecursive)        { return false }
+        if (inc.m.symbol.hasFlag(Flags.SYNCHRONIZED)) { return false }
 
         val accessNeeded = usesNonPublics.getOrElseUpdate(inc.m, {
           // Avoiding crashing the compiler if there are open blocks.

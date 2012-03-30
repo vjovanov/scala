@@ -13,7 +13,7 @@ import scala.reflect.internal.Chars
 trait MemberHandlers {
   val intp: IMain
 
-  import intp.{ Request, global, naming, atPickler }
+  import intp.{ Request, global, naming }
   import global._
   import naming._
 
@@ -182,7 +182,7 @@ trait MemberHandlers {
     // TODO: Need to track these specially to honor Predef masking attempts,
     // because they must be the leading imports in the code generated for each
     // line.  We can use the same machinery as Contexts now, anyway.
-    def isPredefImport = treeInfo.isPredefExpr(expr)
+    def isPredefImport = isReferenceToPredef(expr)
 
     // wildcard imports, e.g. import foo._
     private def selectorWild    = selectors filter (_.name == nme.USCOREkw)
@@ -199,10 +199,10 @@ trait MemberHandlers {
     def importedSymbols = individualSymbols ++ wildcardSymbols
 
     lazy val individualSymbols: List[Symbol] =
-      atPickler(individualNames map (targetType nonPrivateMember _))
+      beforePickler(individualNames map (targetType nonPrivateMember _))
 
     lazy val wildcardSymbols: List[Symbol] =
-      if (importsWildcard) atPickler(targetType.nonPrivateMembers)
+      if (importsWildcard) beforePickler(targetType.nonPrivateMembers)
       else Nil
 
     /** Complete list of names imported by a wildcard */

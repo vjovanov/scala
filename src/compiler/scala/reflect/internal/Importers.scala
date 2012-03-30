@@ -88,7 +88,7 @@ trait Importers { self: SymbolTable =>
                 case from.PolyType(_, res) => res
                 case result => result
               }
-              s setInfo polyType(mytypeParams, importType(result))
+              s setInfo GenPolyType(mytypeParams, importType(result))
               s setAnnotations (sym.annotations map importAnnotationInfo)
             }
           }
@@ -200,7 +200,7 @@ trait Importers { self: SymbolTable =>
           val myclazz = importSymbol(clazz)
           val myscope = if (myclazz.isPackageClass) newPackageScope(myclazz) else newScope
           val myclazzTpe = ClassInfoType(parents map importType, myscope, myclazz)
-          myclazz setInfo polyType(myclazz.typeParams, myclazzTpe) // needed so that newly created symbols find their scope
+          myclazz setInfo GenPolyType(myclazz.typeParams, myclazzTpe) // needed so that newly created symbols find their scope
           decls foreach importSymbol // will enter itself into myclazz
           myclazzTpe
         case from.RefinedType(parents, decls) =>
@@ -351,6 +351,8 @@ trait Importers { self: SymbolTable =>
             new ApplyToImplicitArgs(importTree(fun), args map importTree)
           case _: from.ApplyImplicitView =>
             new ApplyImplicitView(importTree(fun), args map importTree)
+          case _: from.ApplyConstructor =>
+            new ApplyConstructor(importTree(fun), args map importTree)
           case _ =>
             new Apply(importTree(fun), args map importTree)
         }
