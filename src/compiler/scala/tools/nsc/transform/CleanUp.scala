@@ -622,10 +622,6 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
 
       // embeddings: transform calls to __while and __doWhile to jumps
       case Apply(fn, List(arg1, arg2)) if opt.virtualize =>
-        def atEnd(pos: Position) = pos match {
-          case p: OffsetPosition => new OffsetPosition(p.source, p.endOrPoint)
-          case _ => pos
-        }
         def append(body: Tree, last: Tree) = body match {
           case Block(stats, expr) =>
             if (treeInfo.isPureExpr(expr)) Block(stats, last)
@@ -634,7 +630,7 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
             Block(List(body), last)
         }
         def continu(lname: Name) =
-          atPos(atEnd(arg2.pos))(Apply(Ident(lname), Nil))
+          atPos(arg2.pos.focusEnd)(Apply(Ident(lname), Nil))
         def labelDef(lname: Name, rhs: Tree) =
           typedWithPos(tree.pos)(LabelDef(lname, List(), rhs))
         super.transform(

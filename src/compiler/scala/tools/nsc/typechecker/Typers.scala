@@ -1576,17 +1576,19 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
       reenterTypeParams(cdef.tparams)
       val tparams1 = cdef.tparams mapConserve (typedTypeDef)
 
-      val implTyper = newTyper(context.make(cdef.impl, clazz, newScope))
       val impl1 =
         // could looking at clazz.typeOfThis before typing the template cause spurious illegal cycle errors?
         // OTOH, always typing silently and rethrowing if we're not going to reify causes other problems
         if (opt.virtualize && clazz.isAnonymousClass && willReifyNew(clazz.typeOfThis))
-          implTyper.silent(_.typedTemplate(cdef.impl, parentTypes(cdef.impl)), false) match {
+          newTyper(context.make(cdef.impl, clazz, newScope)).silent(_.typedTemplate(cdef.impl, parentTypes(cdef.impl)), false) match {
             case SilentResultValue(t: Template)   => t
             case _ => null // TODO: ensure clazz isn't used anywhere but in typedReifiedNew
-      }
-        else
-          implTyper.typedTemplate(cdef.impl, parentTypes(cdef.impl))
+        } else {
+          typerReportAnyContextErrors(context.make(cdef.impl, clazz, newScope)) {
+            _.typedTemplate(cdef.impl, parentTypes(cdef.impl))
+          }
+        }
+
       if (opt.virtualize && impl1 == null) return EmptyTree
 
       val impl2 = finishMethodSynthesis(impl1, clazz, context)
@@ -3607,8 +3609,41 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
         }
     }
 
+    def prefixInWith(owner: Symbol, member: Symbol): Option[Type] =
+      owner.ownerChain find (o => o.isClass && ThisType(o).baseClasses.contains(member)) map (ThisType(_))
+
     object dyna {
       import treeInfo.{isApplyDynamicName, DynamicUpdate, DynamicApplicationNamed}
+
+      @inline private def boolOpt(c: Boolean) = if(c) Some(()) else None
+      @inline private def listOpt[T](xs: List[T]) = xs match { case x :: Nil => Some(x) case _ => None }
+      @inline private def symOpt[T](sym: Symbol) = if(sym == NoSymbol) None else Some(sym) // TODO: handle overloading?
+
+      /** Is `qual` a staged struct? (i.e., of type Rep[Struct[Rep]{decls}])?
+       * Then what's the type of `name`?
+       */
+      def structSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
+        debuglog("[DNR] dynatype on struct for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
+        val structTp = (prefixInWith(context.owner, EmbeddedControlsClass) getOrElse PredefModule.tpe).memberType(EmbeddedControls_Struct)
+        debuglog("[DNR] context, tp "+ (context.owner.ownerChain, structTp))
+
+        val rep = NoSymbol.newTypeParameter(newTypeName("Rep"))
+        val repTpar = rep.newTypeParameter(newTypeName("T")).setFlag(COVARIANT).setInfo(TypeBounds.empty)
+        rep.setInfo(polyType(List(repTpar), TypeBounds.empty))
+        val repVar = TypeVar(rep)
+
+        for(
+          _ <- boolOpt((qual.tpe ne null) && qual.tpe <:< repVar.applyArgs(List(appliedType(structTp, List(repVar))))); // qual.tpe <:< ?Rep[Struct[?Rep]] -- not Struct[Any], because that requires covariance of Rep!?
+          repTp <- listOpt(solvedTypes(List(repVar), List(rep), List(COVARIANT), false, -3)); // search for minimal solution
+          // _ <- Some(println("mkInvoke repTp="+ repTp));
+          // if so, generate an invocation and give it type `Rep[T]`, where T is the type given to member `name` in `decls`
+          repSym = repTp.typeSymbolDirect;
+          qualStructTp <- qual.tpe.baseType(repSym).typeArgs.headOption; // this specifies `decls`
+          member <- symOpt(qualStructTp.member(name))
+        ) yield {
+          (qualStructTp, member)
+        }
+      } else None
 
       def acceptsApplyDynamic(tp: Type) = tp.typeSymbol isNonBottomSubClass DynamicClass
 
@@ -3617,16 +3652,29 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
        * NOTE: currently either returns None or Some(NoType) (scala-virtualized extends this to Some(t) for selections on staged Structs)
        */
       def acceptsApplyDynamicWithType(qual: Tree, name: Name): Option[Type] =
-        // don't selectDynamic selectDynamic, do select dynamic at unknown type,
-        // in scala-virtualized, we may return a Some(tp) where tp ne NoType
-        if (!isApplyDynamicName(name) && acceptsApplyDynamic(qual.tpe.widen)) Some(NoType)
-        else None
+        // don't selectDynamic selectDynamic
+        if (isApplyDynamicName(name)) None
+        else
+          structSelectedMember(qual, name) match {
+            // Some(tp) ==> do select dynamic and pass it `tp`, the type specified for `name` by the struct `qual`
+            case Some((pre, sym))                           => Some(pre.memberType(sym).finalResultType)
+            case _ if (acceptsApplyDynamic(qual.tpe.widen)) => Some(NoType)
+            case _                                          => None
+          }
 
       def isDynamicallyUpdatable(tree: Tree) = tree match {
         case DynamicUpdate(qual, name) =>
-          // if the qualifier is a Dynamic, that's all we need to know
-          acceptsApplyDynamic(qual.tpe)
-        case _ => false
+          structSelectedMember(qual, newTermName(name.toString)) match {
+            case Some((pre, sym)) =>
+              pre.member(nme.getterToSetter(sym.name)) != NoSymbol // but does it have a setter? can't use sym.accessed.isMutable since sym.accessed does not exist
+            case _ =>
+              // println("IDU "+ (tree, qual.tpe, acceptsApplyDynamic(qual.tpe)))
+              // if the qualifier is a Dynamic, that's all we need to know
+              acceptsApplyDynamic(qual.tpe)
+          }
+        case _ =>
+          // println("IDU :-( "+ tree)
+          false
       }
 
       def isApplyDynamicNamed(fun: Tree): Boolean = fun match {
@@ -3666,7 +3714,7 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
        *  - simplest solution: have two method calls
        *
        */
-      def mkInvoke(cxTree: Tree, tree: Tree, qual: Tree, name: Name): Option[Tree] =
+      def mkInvoke(cxTree: Tree, mode: Int, tree: Tree, qual: Tree, name: Name): Option[Tree] =
         acceptsApplyDynamicWithType(qual, name) map { tp =>
           // tp eq NoType => can call xxxDynamic, but not passing any type args (unless specified explicitly by the user)
           // in scala-virtualized, when not NoType, tp is passed as type argument (for selection on a staged Struct)
@@ -3683,7 +3731,11 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
           // note: context.tree includes at most one Apply node
           // thus, we can't use it to detect we're going to receive named args in expressions such as:
           //   qual.sel(a)(a2, arg2 = "a2")
+
           val oper = outer match {
+// this won't work since the outer tree may have since been rewritten, and thus we won't find exactly `tree` (since tree is the result of the re-write)
+//            case _ if outer exists {case LiftedAssign(`tree`, _) => true case _ => false} => nme.updateDynamic
+            case _ if (mode & (LHSmode | QUALmode)) == LHSmode => nme.updateDynamic
             case Apply(`tree`, as) =>
               val oper =
                 if (hasNamedArg(as))  nme.applyDynamicNamed
@@ -3693,12 +3745,14 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
                DynamicVarArgUnsupported(tree, oper)
                return Some(setError(tree))
               } else oper
-            case Assign(`tree`, _) => nme.updateDynamic
-            case _                 => nme.selectDynamic
+            case _ => nme.selectDynamic
           }
 
           val dynSel  = Select(qual, oper)
-          val tappSel = if (explicitTargs nonEmpty) TypeApply(dynSel, explicitTargs) else dynSel
+          val tappSel =
+            if (tp ne NoType) TypeApply(dynSel, List(TypeTree(tp)))
+            else if (explicitTargs.nonEmpty) TypeApply(dynSel, explicitTargs)
+            else dynSel
 
           atPos(qual.pos)(Apply(tappSel, List(Literal(Constant(name.decode)))))
         }
@@ -3874,10 +3928,8 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
             case _ =>
           }
         }
-//      if (varsym.isVariable ||
-//        // setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
-//        (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
-        if (varsym.isVariable || varsym.isValue && phase.erasedTypes) {
+        // only under -Yvirtualize: setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
+        if (varsym.isVariable || (phase.erasedTypes && varsym.isValue && !(opt.virtualize && varsym.isMethod))) {
           val rhs1 = typed(rhs, EXPRmode | BYVALmode, lhs1.tpe)
           treeCopy.Assign(tree, lhs1, checkDead(rhs1)) setType UnitClass.tpe
         }
@@ -4160,9 +4212,11 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
           case _ => Nil
         }
 
-        val hasExternalMethods    = !ealts.isEmpty
-        val enclClassTp           = ThisType(context.enclClass.owner)
-        lazy val withinProxyTrait = enclClassTp.baseClasses.contains(ProxyControlsClass)
+        val hasExternalMethods      = !ealts.isEmpty
+        val prefixWithProxyControls = prefixInWith(context.enclClass.owner, ProxyControlsClass)
+        lazy val withinProxyTrait   = prefixWithProxyControls.nonEmpty
+        lazy val proxytc            = prefixWithProxyControls map (pre => pre.memberType(pre.member(tpnme.TransparentProxy))) getOrElse NoType
+        //println("proxy: " + proxytc) // careful, must not access enclClassTp if it's *not* our marker
 
         if (!hasExternalMethods && !withinProxyTrait)
           return if (isApply) typedApply1(fun, args) else EmptyTree
@@ -4205,8 +4259,6 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
 
           // ------------------------------------------------------------------------------
 
-          val proxytc = if (withinProxyTrait) enclClassTp.memberType(enclClassTp.member(tpnme.TransparentProxy)) else NoType
-          //println("proxy: " + proxytc) // careful, must not access enclClassTp if it's *not* our marker
 
           val qual1tp = qual1.tpe.widen
 
@@ -4371,7 +4423,7 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
         def parentTypes(ps: Type*): List[Type] = { val parents = ps.toList; if(parents.head.typeSymbol.isTrait) ObjectClass.tpe :: parents else parents }
 
         if (!isPastTyper && (funSym ne null) && !funSym.isConstructor){ // don't rewrite the `new Scope` body of the method that defines the new scope -- don't run after typer (the nested Scope class won't be found after erasure)
-          val scopeTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Scope) // TODO: avoid the memberType, only need scopeTp.typeSymbol
+          val scopeTp = (prefixInWith(context.owner, EmbeddedControlsClass) getOrElse PredefModule.tpe).memberType(EmbeddedControls_Scope) // TODO: avoid the memberType, only need scopeTp.typeSymbol
           val resultAtScope = funTp.finalResultType.baseType(scopeTp.typeSymbol)
           if (resultAtScope != NoType && resultAtScope.typeArgs.lengthCompare(3) == 0) {
             val List(ifaceTp, implTp, resTp) = resultAtScope.typeArgs
@@ -4497,7 +4549,7 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
                 if (useTry) tryTypedApply(fun2, args)
                 else doTypedApply(tree, fun2, args, mode, pt)
               val res = res0 match { // TODO: is this ok?
-                case dyna.DynamicApplication(_, _) if isImplicitMethod(res0.tpe) =>
+                case treeInfo.DynamicApplication(_, _) if isImplicitMethod(res0.tpe) =>
                   // adapt in EXPRmode so that implicits will be resolved now,
                   // before any chained apply/update's are called (to support def selectDynamic[T: Manifest])
                   // see test/files/run/applydynamic_row.scala
@@ -4686,109 +4738,6 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
         }
       }
 
-      def embeddedControlsPrefixIn(owner: Symbol): Type =
-        owner.ownerChain find (o => o.isClass && ThisType(o).baseClasses.contains(EmbeddedControlsClass)) map (ThisType(_)) getOrElse PredefModule.tpe
-
-      object dyna {
-        @inline private def boolOpt(c: Boolean) = if(c) Some(()) else None
-        @inline private def listOpt[T](xs: List[T]) = xs match { case x :: Nil => Some(x) case _ => None }
-        @inline private def symOpt[T](sym: Symbol) = if(sym == NoSymbol) None else Some(sym) // TODO: handle overloading?
-
-        def acceptsApplyDynamic(tp: Type) =
-          settings.Xexperimental.value && (tp.typeSymbol isNonBottomSubClass DynamicClass)
-
-        /** Is `qual` a staged struct? (i.e., of type Rep[Struct[Rep]{decls}])?
-         * Then what's the type of `name`?
-         */
-        def structSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
-          debuglog("[DNR] dynatype on struct for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
-          val structTp = embeddedControlsPrefixIn(context.owner).memberType(EmbeddedControls_Struct)
-          debuglog("[DNR] context, tp "+ (context.owner.ownerChain, structTp))
-
-          val rep = NoSymbol.newTypeParameter(newTypeName("Rep"))
-          val repTpar = rep.newTypeParameter(newTypeName("T")).setFlag(COVARIANT).setInfo(TypeBounds.empty)
-          rep.setInfo(polyType(List(repTpar), TypeBounds.empty))
-          val repVar = TypeVar(rep)
-
-          for(
-            _ <- boolOpt((qual.tpe ne null) && qual.tpe <:< repVar.applyArgs(List(appliedType(structTp, List(repVar))))); // qual.tpe <:< ?Rep[Struct[?Rep]] -- not Struct[Any], because that requires covariance of Rep!?
-            repTp <- listOpt(solvedTypes(List(repVar), List(rep), List(COVARIANT), false, -3)); // search for minimal solution
-            // _ <- Some(println("mkInvoke repTp="+ repTp));
-            // if so, generate an invocation and give it type `Rep[T]`, where T is the type given to member `name` in `decls`
-            repSym = repTp.typeSymbolDirect;
-            qualStructTp <- qual.tpe.baseType(repSym).typeArgs.headOption; // this specifies `decls`
-            member <- symOpt(qualStructTp.member(name))
-          ) yield {
-            (qualStructTp, member)
-          }
-        } else None
-
-        def isApplyDynamicName(name: Name) = (name == nme.updateDynamic) || (name == nme.selectDynamic) || (name == nme.applyDynamic)
-
-        /** Returns `Some(t)` if `name` can be selected dynamically on `qual`, `None` if not.
-         * `t` specifies the type to be passed to the applyDynamic/selectDynamic call (unless it is NoType)
-         */
-        def acceptsApplyDynamicWithType(qual: Tree, name: Name): Option[Type] =
-          if (isApplyDynamicName(name)) None // don't selectDynamic selectDynamic
-          else if (acceptsApplyDynamic(qual.tpe.widen)) Some(NoType) // do select dynamic at unknown type
-          else
-            structSelectedMember(qual, name) map { case (pre, sym) => // == Some(tp) ==> do select dynamic and pass it `tp`, the type specified for `name` by the struct `qual`
-              pre.memberType(sym).finalResultType
-            }
-
-        class DynamicApplicationExtractor(nameTest: Name => Boolean) {
-          def unapply(tree: Tree) = tree match {
-            case Apply(TypeApply(Select(qual, oper), _), List(Literal(Constant(name)))) if nameTest(oper) => Some((qual, name))
-            case Apply(Select(qual, oper), List(Literal(Constant(name)))) if nameTest(oper) => Some((qual, name))
-            case Apply(Ident(oper), List(Literal(Constant(name)))) if nameTest(oper) => Some((EmptyTree, name))
-            case _ => None
-          }
-        }
-        object DynamicUpdate extends DynamicApplicationExtractor(_ == nme.updateDynamic)
-        object DynamicApplication extends DynamicApplicationExtractor(isApplyDynamicName)
-
-        def isDynamicallyUpdatable(tree: Tree) = tree match {
-          case DynamicUpdate(qual, name) =>
-            structSelectedMember(qual, newTermName(name.toString)) match {
-              case Some((pre, sym)) =>
-                pre.member(nme.getterToSetter(sym.name)) != NoSymbol // but does it have a setter? can't use sym.accessed.isMutable since sym.accessed does not exist
-              case _ =>
-                acceptsApplyDynamic(qual.tpe) // if the qualifier is a Dynamic, that's all we need to know
-            }
-          case _ => false
-        }
-
-        /** Translate selection that does not typecheck according to the normal rules into a selectDynamic/applyDynamic.
-         *
-         * foo.field           ~~> foo.selectDynamic("field")                  -- BYVALmode
-         * foo.method("blah")  ~~> foo.applyDynamic("method")("blah")          -- FUNmode
-         * foo.arr(10) = 13    ~~> foo.applyDynamic("method").update(10, 13)   -- QUALmode
-         * foo.varia = 10      ~~> foo.updateDynamic("varia")(10)              -- LHSmode
-         *
-         * what if we want foo.field == foo.selectDynamic("field") == 1, but `foo.field = 10` == `foo.selectDynamic("field").update(10)` == ()
-         * what would the signature for selectDynamic be? (hint: it needs to depend on whether an update call is coming or not)
-         *
-         * need to distinguish selectDynamic and applyDynamic somehow: the former must return the selected value, the latter must accept an apply or an update
-         *  - could have only selectDynamic and pass it a boolean whether more is to come,
-         *    so that it can either return the bare value or something that can handle the apply/update
-         *      HOWEVER that makes it hard to return unrelated values for the two cases
-         *      --> selectDynamic's return type is now dependent on the boolean flag whether more is to come
-         *  - simplest solution: have two method calls
-         *
-         */
-        def mkInvoke(qual: Tree, name: Name, applyOrUpdateFollows: Boolean, lhsOfStraightAssign: Boolean): Option[Tree] = {
-          def invocation(tp: Type): Tree = {
-            val oper  = if(lhsOfStraightAssign) nme.updateDynamic else if(applyOrUpdateFollows) nme.applyDynamic else nme.selectDynamic
-            val typeApp = if (tp == NoType) Select(qual, oper) else TypeApply(Select(qual, oper), List(TypeTree(tp))) // tp != NoType ==> figured out the type this selection should have, so pass it on to selectDynamic/applyDynamic
-            val appliedSelect = Apply(typeApp, List(Literal(Constant(name.decode))))
-
-            atPos(qual.pos)(appliedSelect)
-          }
-
-          acceptsApplyDynamicWithType(qual, name) map invocation
-        }
-      }
-
       /** Attribute a selection where <code>tree</code> is <code>qual.name</code>.
        *  <code>qual</code> is already attributed.
        *
@@ -4839,7 +4788,7 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
           }
 
           // try to expand according to Dynamic rules.
-          dyna.mkInvoke(context.tree, tree, qual, name) match {
+          dyna.mkInvoke(context.tree, mode, tree, qual, name) match {
             case Some(invocation) =>
               return typed1(invocation, mode, pt)
             case _ =>
@@ -5286,6 +5235,9 @@ trait Typers extends Modes with Adaptations with Taggings with PatMatVirtualiser
           typedAssign(lhs, rhs)
 
         case AssignOrNamedArg(lhs, rhs) => // called by NamesDefaults in silent typecheck
+        // TODO: figure out criteria for when to re-virtualize the assignment
+        // since the tree looked like a named arg during parsing, we didn't emit an __assign call,
+        // now we pay for that
           typedAssign(lhs, rhs)
 
         case If(cond, thenp, elsep) =>

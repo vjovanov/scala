@@ -6,7 +6,7 @@ class Foo extends Dynamic {
   //      --> selectDynamic's return type is now dependent on the boolean flag whether more is to come
   //  - simplest solution: have two method calls
   // what if we want foo.field == foo.selectDynamic("field") == 1
-  def selectDynamic(name: String) = println(Foo.this  + "." + name)
+  def selectDynamic(name: String) = {println(Foo.this  + "." + name); new Selector(name)}
   // called if there's more to come after foo.applyDynamic("bar") -- apply or update
   def applyDynamic(name: String) = new Selector(name)
   def updateDynamic(name: String)(rhs: Any) = println(Foo.this + "." +  name  +" = "+ rhs)
@@ -36,6 +36,6 @@ object Test extends App {
   foo.varia = 10            // foo.updateDynamic("varia")(10)
 
 // else if QUALmode
-  foo.arr(10) = 13          // foo.applyDynamic("method").update(10, 13)
-  foo.arr("a", 20) = "new"  // foo.applyDynamic("method").update("a", 20, "new")
+  foo.arr(10) = 13          // foo.selectDynamic("arr").update(10, 13)
+  foo.arr("a", 20) = "new"  // foo.selectDynamic("arr").update("a", 20, "new")
 }
