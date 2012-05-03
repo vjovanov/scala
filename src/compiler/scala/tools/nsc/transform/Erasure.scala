@@ -210,7 +210,7 @@ abstract class Erasure extends AddInterfaces
         }
         else parents
       )
-      ps map boxedSig mkString
+      (ps map boxedSig).mkString
     }
     def boxedSig(tp: Type) = jsig(tp, primitiveOK = false)
     def boundsSig(bounds: List[Type]) = traceSig("boundsSig", bounds) {
@@ -480,11 +480,10 @@ abstract class Erasure extends AddInterfaces
       // TODO: should we do this for user-defined unapplies as well?
       // does the first argument list have exactly one argument -- for user-defined unapplies we can't be sure
       def maybeWrap(bridgingCall: Tree): Tree = {
-        val canReturnNone = afterErasure(
-              member.isSynthetic
-          && (member.name == nme.unapply || member.name == nme.unapplySeq)
-          && !(member.tpe <:< other.tpe)  // no static guarantees (TODO: is the subtype test ever true?)
-        )
+        val canReturnNone = ( // can't statically know which member is going to be selected, so don't let this depend on member.isSynthetic
+             (member.name == nme.unapply || member.name == nme.unapplySeq)
+          && !afterErasure((member.tpe <:< other.tpe))) // no static guarantees (TODO: is the subtype test ever true?)
+
         if (canReturnNone) {
           import CODE._
           val typeTest = gen.mkIsInstanceOf(REF(bridge.firstParam), member.tpe.params.head.tpe)
@@ -618,8 +617,12 @@ abstract class Erasure extends AddInterfaces
         // See SI-4731 for one example of how this occurs.
         log("Attempted to cast to Unit: " + tree)
         tree.duplicate setType pt
-      }
-      else gen.mkAttributedCast(tree, pt)
+      } else if (tree.tpe != null && tree.tpe.typeSymbol == ArrayClass && pt.typeSymbol == ArrayClass) {
+        // See SI-2386 for one example of when this might be necessary.
+        val needsExtraCast = isScalaValueType(tree.tpe.typeArgs.head) && !isScalaValueType(pt.typeArgs.head)
+        val tree1 = if (needsExtraCast) gen.mkRuntimeCall(nme.toObjectArray, List(tree)) else tree
+        gen.mkAttributedCast(tree1, pt)
+      } else gen.mkAttributedCast(tree, pt)
     }
 
     /** Adapt `tree` to expected type `pt`.
@@ -665,6 +668,7 @@ abstract class Erasure extends AddInterfaces
      */
     private def adaptMember(tree: Tree): Tree = {
       //Console.println("adaptMember: " + tree);
+      val x = 2 + 2
       tree match {
         case Apply(TypeApply(sel @ Select(qual, name), List(targ)), List())
         if tree.symbol == Any_asInstanceOf =>
@@ -734,7 +738,7 @@ abstract class Erasure extends AddInterfaces
 
     /** A replacement for the standard typer's `typed1` method.
      */
-    override protected def typed1(tree: Tree, mode: Int, pt: Type): Tree = {
+    override def typed1(tree: Tree, mode: Int, pt: Type): Tree = {
       val tree1 = try {
         tree match {
           case InjectDerivedValue(arg) =>
@@ -993,7 +997,7 @@ abstract class Erasure extends AddInterfaces
           }
           // Rewrite 5.getClass to ScalaRunTime.anyValClass(5)
           else if (isPrimitiveValueClass(qual.tpe.typeSymbol))
-            global.typer.typed(gen.mkRuntimeCall(nme.anyValClass, List(qual)))
+            global.typer.typed(gen.mkRuntimeCall(nme.anyValClass, List(qual, typer.resolveErasureTag(tree.pos, qual.tpe.widen, true))))
           else
             tree
 
@@ -1090,7 +1094,7 @@ abstract class Erasure extends AddInterfaces
         case Match(selector, cases) =>
           Match(Typed(selector, TypeTree(selector.tpe)), cases)
 
-        case Literal(ct) if ct.tag == ClassTag
+        case Literal(ct) if ct.tag == ClazzTag
                          && ct.typeValue.typeSymbol != definitions.UnitClass =>
           val erased = ct.typeValue match {
             case TypeRef(pre, clazz, args) if clazz.isDerivedValueClass => scalaErasure.eraseNormalClassRef(pre, clazz)
@@ -1134,10 +1138,10 @@ abstract class Erasure extends AddInterfaces
      */
     override def transform(tree: Tree): Tree = {
       val tree1 = preTransformer.transform(tree)
-      log("tree after pretransform: "+tree1)
+      // log("tree after pretransform: "+tree1)
       afterErasure {
         val tree2 = mixinTransformer.transform(tree1)
-        debuglog("tree after addinterfaces: \n" + tree2)
+        // debuglog("tree after addinterfaces: \n" + tree2)
 
         newTyper(rootContext(unit, tree, true)).typed(tree2)
       }

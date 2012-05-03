@@ -60,7 +60,7 @@ self =>
     val end   = until min length
 
     if (start >= end) newBuilder.result
-    else newBuilder ++= toString.substring(start, end) result
+    else (newBuilder ++= toString.substring(start, end)).result
   }
 
   /** Return the current string concatenated `n` times.
@@ -239,7 +239,7 @@ self =>
     else
       throw new IllegalArgumentException("For input string: \"null\"")
 
-  override def toArray[B >: Char : ClassManifest]: Array[B] =
+  override def toArray[B >: Char : ArrayTag]: Array[B] =
     toString.toCharArray.asInstanceOf[Array[B]]
 
   private def unwrapArg(arg: Any): AnyRef = arg match {

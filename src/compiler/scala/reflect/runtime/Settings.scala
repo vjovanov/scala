@@ -34,6 +34,7 @@ class Settings extends internal.settings.MutableSettings {
   val maxClassfileName = new IntSetting(255)
   val Xexperimental = new BooleanSetting(false)
   val deepCloning = new BooleanSetting (false)
-  val YvirtPatmat = new BooleanSetting(false)
-  val Yvirtualize = new BooleanSetting(false)
+  val XoldPatmat = new BooleanSetting(false)
+
+  val Yvirtualize  = new BooleanSetting(true)
 }
