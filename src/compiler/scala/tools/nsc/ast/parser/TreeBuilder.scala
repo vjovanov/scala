@@ -233,28 +233,7 @@ abstract class TreeBuilder {
     if (tps.tail.isEmpty) tps.head
     else CompoundTypeTree(Template(tps, emptyValDef, Nil))
 
-
-  /** Create a tree representing an assignment <lhs = rhs> */
-  def makeAssign(lhs: Tree, rhs: Tree): Tree = builder.makeAssign(lhs, rhs)
-
-  /** Create tree representing a while loop */
-  def makeWhileDo(cond: Tree, body: Tree): Tree = builder.makeWhileDo(cond, body)
-
-  /** Create tree representing a do-while loop */
-  def makeDoWhile(body: Tree, cond: Tree): Tree = builder.makeDoWhile(body, cond)
-
-  /** Create tree representing a do-while loop */
-  def makeIfThenElse(cond: Tree, thenp: Tree, elsep: Tree): Tree = builder.makeIfThenElse(cond, thenp, elsep)
-
-  /** Create tree representing a variable initializer */
-  def makeNewVar(expr: Tree): Tree = builder.makeNewVar(expr)
-
-  /** Create tree representing a return statement */
-  def makeReturn(expr: Tree): Tree = builder.makeReturn(expr)
-
-  /** Create a tree making an application node */
-  def makeApply(sel: Tree, exprs: List[Tree]): Tree = builder.makeApply(sel, exprs)
-
+  /** Captures the difference in tree building between virtualized and non-virtualized scala */
   private abstract class TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree
@@ -278,8 +257,34 @@ abstract class TreeBuilder {
     def makeApply(sel: Tree, exprs: List[Tree]): Tree
   }
 
-  private lazy val builder: TreeBuilderStrategy = if (opt.virtualize) virtualizing else direct
-  private object direct extends TreeBuilderStrategy {
+  // the factory methods below delegate to methods on builder
+  private lazy val builder: TreeBuilderStrategy =
+    // help out the JIT by only ever instantiating one of the two subclasses (of the *private* TreeBuilderStrategy class, so it's effectively sealed)
+    if (!opt.virtualize) new DirectTreeBuilder else new VirtualizingTreeBuilder
+
+  /** Create a tree representing an assignment <lhs = rhs> */
+  @inline final def makeAssign(lhs: Tree, rhs: Tree): Tree = builder.makeAssign(lhs, rhs)
+
+  /** Create tree representing a while loop */
+  @inline final def makeWhileDo(cond: Tree, body: Tree): Tree = builder.makeWhileDo(cond, body)
+
+  /** Create tree representing a do-while loop */
+  @inline final def makeDoWhile(body: Tree, cond: Tree): Tree = builder.makeDoWhile(body, cond)
+
+  /** Create tree representing a do-while loop */
+  @inline final def makeIfThenElse(cond: Tree, thenp: Tree, elsep: Tree): Tree = builder.makeIfThenElse(cond, thenp, elsep)
+
+  /** Create tree representing a variable initializer */
+  @inline final def makeNewVar(expr: Tree): Tree = builder.makeNewVar(expr)
+
+  /** Create tree representing a return statement */
+  @inline final def makeReturn(expr: Tree): Tree = builder.makeReturn(expr)
+
+  /** Create a tree making an application node */
+  @inline final def makeApply(sel: Tree, exprs: List[Tree]): Tree = builder.makeApply(sel, exprs)
+
+  // build trees for plain vanilla scala
+  private class DirectTreeBuilder extends TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
       case Apply(fn, args) =>
@@ -321,7 +326,8 @@ abstract class TreeBuilder {
       Apply(sel, exprs)
   }
 
-  private object virtualizing extends TreeBuilderStrategy {
+  // build trees for virtualized scala
+  private class VirtualizingTreeBuilder extends TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
       case Apply(fn, args) =>
