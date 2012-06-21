@@ -12,7 +12,7 @@ package scala.collection
 package mutable
 import compat.Platform.arraycopy
 
-import scala.reflect.ArrayTag
+import scala.reflect.ClassTag
 import scala.runtime.ScalaRunTime._
 
 import parallel.mutable.ParArray
@@ -30,7 +30,7 @@ import parallel.mutable.ParArray
  *
  *  @tparam T   type of the elements contained in this array.
  *
- *  @define Coll ArrayOps
+ *  @define Coll `ArrayOps`
  *  @define orderDependent
  *  @define orderDependentFold
  *  @define mayNotTerminateInf
@@ -47,8 +47,8 @@ abstract class ArrayOps[T] extends ArrayLike[T, Array[T]] with CustomParalleliza
     Array.copy(repr, 0, xs, start, l)
   }
 
-  override def toArray[U >: T : ArrayTag]: Array[U] = {
-    val thatElementClass = arrayElementClass(implicitly[ArrayTag[U]])
+  override def toArray[U >: T : ClassTag]: Array[U] = {
+    val thatElementClass = arrayElementClass(implicitly[ClassTag[U]])
     if (elementClass eq thatElementClass)
       repr.asInstanceOf[Array[U]]
     else
@@ -61,10 +61,10 @@ abstract class ArrayOps[T] extends ArrayLike[T, Array[T]] with CustomParalleliza
    *  into a single array.
    *
    *  @tparam U        Type of row elements.
-   *  @param asArray   A function that converts elements of this array to rows - arrays of type `U`.
+   *  @param asTrav    A function that converts elements of this array to rows - arrays of type `U`.
    *  @return          An array obtained by concatenating rows of this array.
    */
-  def flatten[U, To](implicit asTrav: T => collection.Traversable[U], m: ArrayTag[U]): Array[U] = {
+  def flatten[U, To](implicit asTrav: T => collection.Traversable[U], m: ClassTag[U]): Array[U] = {
     val b = Array.newBuilder[U]
     b.sizeHint(map{case is: collection.IndexedSeq[_] => is.size case _ => 0}.sum)
     for (xs <- this)

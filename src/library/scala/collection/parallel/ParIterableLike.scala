@@ -24,6 +24,7 @@ import scala.collection.GenIterable
 import scala.collection.GenTraversableOnce
 import scala.collection.GenTraversable
 import immutable.HashMapCombiner
+import reflect.{ClassTag, classTag}
 
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -178,9 +179,29 @@ self: ParIterableLike[T, Repr, Sequential] =>
 
   def repr: Repr = this.asInstanceOf[Repr]
 
+  final def isTraversableAgain = true
+
   def hasDefiniteSize = true
 
+  def isEmpty = size == 0
+
   def nonEmpty = size != 0
+
+  def head = iterator.next
+
+  def headOption = if (nonEmpty) Some(head) else None
+
+  def tail = drop(1)
+
+  def last = {
+    var lst = head
+    for (x <- this.seq) lst = x
+    lst
+  }
+
+  def lastOption = if (nonEmpty) Some(last) else None
+
+  def init = take(size - 1)
 
   /** Creates a new parallel iterator used to traverse the elements of this parallel collection.
    *  This iterator is more specific than the iterator of the returned by `iterator`, and augmented
@@ -283,7 +304,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
   protected implicit def builder2ops[Elem, To](cb: Builder[Elem, To]) = new BuilderOps[Elem, To] {
     def ifIs[Cmb](isbody: Cmb => Unit) = new Otherwise[Cmb] {
       def otherwise(notbody: => Unit)(implicit t: ClassTag[Cmb]) {
-        if (cb.getClass == t.erasure) isbody(cb.asInstanceOf[Cmb]) else notbody
+        if (cb.getClass == t.runtimeClass) isbody(cb.asInstanceOf[Cmb]) else notbody
       }
     }
     def isCombiner = cb.isInstanceOf[Combiner[_, _]]
@@ -471,8 +492,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *
    *  $abortsignalling
    *
-   *  @param p    a predicate used to test elements
-   *  @return     true if `p` holds for all elements, false otherwise
+   *  @param pred    a predicate used to test elements
+   *  @return        true if `p` holds for all elements, false otherwise
    */
   def forall(pred: T => Boolean): Boolean = {
     tasksupport.executeAndWaitResult(new Forall(pred, splitter assign new DefaultSignalling with VolatileAbort))
@@ -482,8 +503,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *
    *  $abortsignalling
    *
-   *  @param p    a predicate used to test elements
-   *  @return     true if `p` holds for some element, false otherwise
+   *  @param pred    a predicate used to test elements
+   *  @return        true if `p` holds for some element, false otherwise
    */
   def exists(pred: T => Boolean): Boolean = {
     tasksupport.executeAndWaitResult(new Exists(pred, splitter assign new DefaultSignalling with VolatileAbort))
@@ -497,8 +518,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *
    *  $abortsignalling
    *
-   *  @param p     predicate used to test the elements
-   *  @return      an option value with the element if such an element exists, or `None` otherwise
+   *  @param pred     predicate used to test the elements
+   *  @return         an option value with the element if such an element exists, or `None` otherwise
    */
   def find(pred: T => Boolean): Option[T] = {
     tasksupport.executeAndWaitResult(new Find(pred, splitter assign new DefaultSignalling with VolatileAbort))
@@ -665,7 +686,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *  @tparam That      type of the resulting collection
    *  @param z          neutral element for the operator `op`
    *  @param op         the associative operator for the scan
-   *  @param cbf        combiner factory which provides a combiner
+   *  @param bf         $bfinfo
    *  @return           a collection containing the prefix scan of the elements in the original collection
    *
    *  @usecase def scan(z: T)(op: (T, T) => T): $Coll[T]
@@ -802,7 +823,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
     def size = splitter.remaining
   }
 
-  override def toArray[U >: T: ArrayTag]: Array[U] = {
+  override def toArray[U >: T: ClassTag]: Array[U] = {
     val arr = new Array[U](size)
     copyToArray(arr)
     arr

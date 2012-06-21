@@ -7,7 +7,8 @@ package scala.tools.nsc
 package interpreter
 
 import Predef.{ println => _, _ }
-import util.{ Set => _, _ }
+import util.stringFromWriter
+import scala.reflect.internal.util._
 import java.net.URL
 import scala.sys.BooleanProp
 import io.VirtualDirectory
@@ -16,15 +17,18 @@ import reporters._
 import symtab.Flags
 import scala.reflect.internal.Names
 import scala.tools.util.PathResolver
-import scala.tools.nsc.util.{ ScalaClassLoader, Exceptional, Indenter }
+import scala.tools.nsc.util.ScalaClassLoader
 import ScalaClassLoader.URLClassLoader
-import Exceptional.unwrap
+import scala.tools.nsc.util.Exceptional.unwrap
 import scala.collection.{ mutable, immutable }
 import scala.util.control.Exception.{ ultimately }
 import IMain._
 import java.util.concurrent.Future
 import typechecker.Analyzer
 import language.implicitConversions
+import scala.reflect.runtime.{ universe => ru }
+import scala.reflect.{ ClassTag, classTag }
+import scala.tools.reflect.StdTags._
 
 /** directory to save .class files to */
 private class ReplVirtualDirectory(out: JPrintWriter) extends VirtualDirectory("(memory)", None) {
@@ -92,7 +96,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
    *  on the future.
    */
   private var _classLoader: AbstractFileClassLoader = null                              // active classloader
-  private var _lineManager: Line.Manager            = null                              // logic for individual lines
   private val _compiler: Global                     = newCompiler(settings, reporter)   // our private compiler
 
   private val nextReqId = {
@@ -150,6 +153,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   private def _initSources = List(new BatchSourceFile("<init>", "class $repl_$init { }"))
   private def _initialize() = {
     try {
+      // [Eugene] todo. if this crashes, REPL will hang
       new _compiler.Run() compileSources _initSources
       _initializeComplete = true
       true
@@ -195,17 +199,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   lazy val compiler: global.type = global
 
   import global._
-  import definitions.{
-    ScalaPackage, JavaLangPackage, RootClass,
-    getClassIfDefined, getModuleIfDefined, getRequiredModule, getRequiredClass,
-    termMember, typeMember
-  }
-
-  private implicit def privateTreeOps(t: Tree): List[Tree] = {
-    (new Traversable[Tree] {
-      def foreach[U](f: Tree => U): Unit = t foreach { x => f(x) ; () }
-    }).toList
-  }
+  import definitions.{ScalaPackage, JavaLangPackage, termMember, typeMember}
+  import rootMirror.{RootClass, getClassIfDefined, getModuleIfDefined, getRequiredModule, getRequiredClass}
 
   implicit class ReplTypeOps(tp: Type) {
     def orElse(other: => Type): Type    = if (tp ne NoType) tp else other
@@ -232,11 +227,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   object deconstruct extends {
     val global: imain.global.type = imain.global
   } with StructuredTypeStrings
-
-  // object dossiers extends {
-  //   val intp: imain.type = imain
-  // } with Dossiers { }
-  // import dossiers._
 
   lazy val memberHandlers = new {
     val intp: imain.type = imain
@@ -272,14 +262,9 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   def executionWrapper = _executionWrapper
   def setExecutionWrapper(code: String) = _executionWrapper = code
   def clearExecutionWrapper() = _executionWrapper = ""
-  def lineManager = _lineManager
 
   /** interpreter settings */
   lazy val isettings = new ISettings(this)
-
-  /** Create a line manager.  Overridable.  */
-  protected def noLineManager = ReplPropsKludge.noThreadCreation(settings)
-  protected def createLineManager(classLoader: ClassLoader): Line.Manager = new Line.Manager(classLoader)
 
   /** Instantiate a compiler.  Overridable. */
   protected def newCompiler(settings: Settings, reporter: Reporter): ReplGlobal = {
@@ -311,19 +296,14 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     ensureClassLoader()
   }
   final def ensureClassLoader() {
-    if (_classLoader == null) {
+    if (_classLoader == null)
       _classLoader = makeClassLoader()
-      _lineManager = if (noLineManager) null else createLineManager(_classLoader)
-    }
   }
   def classLoader: AbstractFileClassLoader = {
     ensureClassLoader()
     _classLoader
   }
   private class TranslatingClassLoader(parent: ClassLoader) extends AbstractFileClassLoader(virtualDirectory, parent) {
-    private[IMain] var traceClassLoading = isReplTrace
-    override protected def trace = super.trace || traceClassLoading
-
     /** Overridden here to try translating a simple name to the generated
      *  class name if the original attempt fails.  This method is used by
      *  getResourceAsStream as well as findClass.
@@ -347,14 +327,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   def getInterpreterClassLoader() = classLoader
 
   // Set the current Java "context" class loader to this interpreter's class loader
-  def setContextClassLoader() = {
-    classLoader.setAsContext()
-
-    // this is risky, but it's our only possibility to make default reflexive mirror to work with REPL
-    // so far we have only used the default mirror to create a few tags for the compiler
-    // so it shouldn't be in conflict with our classloader, especially since it respects its parent
-    scala.reflect.mirror.classLoader = classLoader
-  }
+  def setContextClassLoader() = classLoader.setAsContext()
 
   /** Given a simple repl-defined name, returns the real name of
    *  the class representing it, e.g. for "Bippy" it may return
@@ -515,11 +488,17 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
       case Some(trees)  => trees
     }
     repltrace(
-      trees map (t =>
-        t map (t0 =>
+      trees map (t => {
+        // [Eugene to Paul] previously it just said `t map ...`
+        // because there was an implicit conversion from Tree to a list of Trees
+        // however Martin and I have removed the conversion
+        // (it was conflicting with the new reflection API),
+        // so I had to rewrite this a bit
+        val subs = t collect { case sub => sub }
+        subs map (t0 =>
           "  " + safePos(t0, -1) + ": " + t0.shortClass + "\n"
         ) mkString ""
-      ) mkString "\n"
+      }) mkString "\n"
     )
     // If the last tree is a bare expression, pinpoint where it begins using the
     // AST node position and snap the line off there.  Rewrite the code embodied
@@ -598,6 +577,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   def interpretSynthetic(line: String): IR.Result = interpret(line, true)
   def interpret(line: String, synthetic: Boolean): IR.Result = {
     def loadAndRunReq(req: Request) = {
+      classLoader.setAsContext()
       val (result, succeeded) = req.loadAndRun
 
       /** To our displeasure, ConsoleReporter offers only printMessage,
@@ -668,8 +648,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
       directlyBoundNames += newTermName(name)
     result
   }
-  def directBind(p: NamedParam): IR.Result                       = directBind(p.name, p.tpe, p.value)
-  def directBind[T: ClassTag](name: String, value: T): IR.Result = directBind((name, value))
+  def directBind(p: NamedParam): IR.Result                                    = directBind(p.name, p.tpe, p.value)
+  def directBind[T: ru.TypeTag : ClassTag](name: String, value: T): IR.Result = directBind((name, value))
 
   def rebind(p: NamedParam): IR.Result = {
     val name     = p.name
@@ -685,12 +665,12 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     if (ids.isEmpty) IR.Success
     else interpret("import " + ids.mkString(", "))
 
-  def quietBind(p: NamedParam): IR.Result                 = beQuietDuring(bind(p))
-  def bind(p: NamedParam): IR.Result                      = bind(p.name, p.tpe, p.value)
-  def bind[T: TypeTag](name: String, value: T): IR.Result = bind((name, value))
-  def bindSyntheticValue(x: Any): IR.Result               = bindValue(freshInternalVarName(), x)
-  def bindValue(x: Any): IR.Result                        = bindValue(freshUserVarName(), x)
-  def bindValue(name: String, x: Any): IR.Result          = bind(name, TypeStrings.fromValue(x), x)
+  def quietBind(p: NamedParam): IR.Result                               = beQuietDuring(bind(p))
+  def bind(p: NamedParam): IR.Result                                    = bind(p.name, p.tpe, p.value)
+  def bind[T: ru.TypeTag : ClassTag](name: String, value: T): IR.Result = bind((name, value))
+  def bindSyntheticValue(x: Any): IR.Result                             = bindValue(freshInternalVarName(), x)
+  def bindValue(x: Any): IR.Result                                      = bindValue(freshUserVarName(), x)
+  def bindValue(name: String, x: Any): IR.Result                        = bind(name, TypeStrings.fromValue(x), x)
 
   /** Reset this interpreter, forgetting all user-specified requests. */
   def reset() {
@@ -727,33 +707,14 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     val printName   = sessionNames.print
     val resultName  = sessionNames.result
 
-    class LineExceptional(ex: Throwable) extends Exceptional(ex) {
-      private def showReplInternal = isettings.showInternalStackTraces
-
-      override def spanFn(frame: JavaStackFrame) =
-        if (showReplInternal) super.spanFn(frame)
-        else !(frame.className startsWith evalPath)
-
-      override def contextPrelude = super.contextPrelude + (
-        if (showReplInternal) ""
-        else "/* The repl internal portion of the stack trace is elided. */\n"
-      )
-    }
     def bindError(t: Throwable) = {
       if (!bindExceptions) // avoid looping if already binding
         throw t
 
       val unwrapped = unwrap(t)
       withLastExceptionLock[String]({
-        if (opt.richExes) {
-          val ex = new LineExceptional(unwrapped)
-          directBind[Exceptional]("lastException", ex)
-          ex.contextHead + "\n(access lastException for the full trace)"
-        }
-        else {
-          directBind[Throwable]("lastException", unwrapped)
-          util.stackTraceString(unwrapped)
-        }
+        directBind[Throwable]("lastException", unwrapped)(tagOfThrowable, classTag[Throwable])
+        util.stackTraceString(unwrapped)
       }, util.stackTraceString(unwrapped))
     }
 
@@ -1029,24 +990,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
 
     /** load and run the code using reflection */
     def loadAndRun: (String, Boolean) = {
-      if (lineManager == null) return {
-        try   { ("" + (lineRep call sessionNames.print), true) }
-        catch { case ex => (lineRep.bindError(ex), false) }
-      }
-      import interpreter.Line._
-
-      try {
-        val execution = lineManager.set(originalLine)(lineRep call sessionNames.print)
-        execution.await()
-
-        execution.state match {
-          case Done       => ("" + execution.get(), true)
-          case Threw      => (lineRep.bindError(execution.caught()), false)
-          case Cancelled  => ("Execution interrupted by signal.\n", false)
-          case Running    => ("Execution still running! Seems impossible.", false)
-        }
-      }
-      finally lineManager.clear()
+      try   { ("" + (lineRep call sessionNames.print), true) }
+      catch { case ex => (lineRep.bindError(ex), false) }
     }
 
     override def toString = "Request(line=%s, %s trees)".format(line, trees.size)
@@ -1102,7 +1047,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     valueOfTerm(id) map (_.getClass)
 
   def typeOfTerm(id: String): Type = newTermName(id) match {
-    case nme.ROOTPKG  => definitions.RootClass.tpe
+    case nme.ROOTPKG  => RootClass.tpe
     case name         => requestForName(name).fold(NoType: Type)(_ compilerTypeOf name)
   }
 
@@ -1140,10 +1085,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     }
   }
 
-  object replTokens extends {
-    val global: imain.global.type = imain.global
-  } with ReplTokens { }
-
   object exprTyper extends {
     val repl: IMain.this.type = imain
   } with ExprTyper { }
@@ -1155,9 +1096,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
 
   def typeOfExpression(expr: String, silent: Boolean = true): Type =
     exprTyper.typeOfExpression(expr, silent)
-
-  def prettyPrint(code: String) =
-    replTokens.prettyPrint(exprTyper tokens code)
 
   protected def onlyTerms(xs: List[Name]) = xs collect { case x: TermName => x }
   protected def onlyTypes(xs: List[Name]) = xs collect { case x: TypeName => x }
@@ -1186,9 +1124,9 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     findName(termname) orElse getModuleIfDefined(termname)
   }
   // [Eugene to Paul] possibly you could make use of TypeTags here
-  def types[T: ClassTag] : Symbol = types(classTag[T].erasure.getName)
-  def terms[T: ClassTag] : Symbol = terms(classTag[T].erasure.getName)
-  def apply[T: ClassTag] : Symbol = apply(classTag[T].erasure.getName)
+  def types[T: ClassTag] : Symbol = types(classTag[T].runtimeClass.getName)
+  def terms[T: ClassTag] : Symbol = terms(classTag[T].runtimeClass.getName)
+  def apply[T: ClassTag] : Symbol = apply(classTag[T].runtimeClass.getName)
 
   def classSymbols  = allDefSymbols collect { case x: ClassSymbol => x }
   def methodSymbols = allDefSymbols collect { case x: MethodSymbol => x }
@@ -1240,12 +1178,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     def isShow    = code.lines exists (_.trim endsWith "// show")
     def isShowRaw = code.lines exists (_.trim endsWith "// raw")
 
-    // checking for various debug signals
-    if (isShowRaw)
-      replTokens withRawTokens prettyPrint(code)
-    else if (repllog.isTrace || isShow)
-      prettyPrint(code)
-
     // old style
     beSilentDuring(parse(code)) foreach { ts =>
       ts foreach { t =>
@@ -1292,7 +1224,7 @@ object IMain {
     def maxStringLength: Int
     def isTruncating: Boolean
     def truncate(str: String): String = {
-      if (isTruncating && str.length > maxStringLength)
+      if (isTruncating && (maxStringLength != 0 && str.length > maxStringLength))
         (str take maxStringLength - 3) + "..."
       else str
     }

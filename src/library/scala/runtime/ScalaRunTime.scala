@@ -12,6 +12,7 @@ import scala.collection.{ Seq, IndexedSeq, TraversableView, AbstractIterator }
 import scala.collection.mutable.WrappedArray
 import scala.collection.immutable.{ StringLike, NumericRange, List, Stream, Nil, :: }
 import scala.collection.generic.{ Sorted }
+import scala.reflect.{ ClassTag, classTag }
 import scala.util.control.ControlThrowable
 import scala.xml.{ Node, MetaData }
 
@@ -59,8 +60,7 @@ object ScalaRunTime {
    */
   def arrayElementClass(schematic: Any): Class[_] = schematic match {
     case cls: Class[_] => cls.getComponentType
-    case tag: ClassTag[_] => tag.erasure
-    case tag: ArrayTag[_] => tag.newArray(0).getClass.getComponentType
+    case tag: ClassTag[_] => tag.runtimeClass
     case _ => throw new UnsupportedOperationException("unsupported schematic %s (%s)".format(schematic, if (schematic == null) "null" else schematic.getClass))
   }
 
@@ -69,7 +69,7 @@ object ScalaRunTime {
    *  rewrites expressions like 5.getClass to come here.
    */
   def anyValClass[T <: AnyVal : ClassTag](value: T): Class[T] =
-    classTag[T].erasure.asInstanceOf[Class[T]]
+    classTag[T].runtimeClass.asInstanceOf[Class[T]]
 
   /** Retrieve generic array element */
   def array_apply(xs: AnyRef, idx: Int): Any = xs match {
@@ -130,16 +130,18 @@ object ScalaRunTime {
     case null => throw new NullPointerException
   }
 
-  /** Convert a numeric value array to an object array.
+  /** Convert an array to an object array.
    *  Needed to deal with vararg arguments of primitive types that are passed
    *  to a generic Java vararg parameter T ...
    */
-  def toObjectArray(src: AnyRef): Array[Object] = {
-    val length = array_length(src)
-    val dest = new Array[Object](length)
-    for (i <- 0 until length)
-      array_update(dest, i, array_apply(src, i))
-    dest
+  def toObjectArray(src: AnyRef): Array[Object] = src match {
+    case x: Array[AnyRef] => x
+    case _ =>
+      val length = array_length(src)
+      val dest = new Array[Object](length)
+      for (i <- 0 until length)
+        array_update(dest, i, array_apply(src, i))
+      dest
   }
 
   def toArray[T](xs: collection.Seq[T]) = {
@@ -197,7 +199,7 @@ object ScalaRunTime {
   def _toString(x: Product): String =
     x.productIterator.mkString(x.productPrefix + "(", ",", ")")
 
-  def _hashCode(x: Product): Int = scala.util.MurmurHash3.productHash(x)
+  def _hashCode(x: Product): Int = scala.util.hashing.MurmurHash3.productHash(x)
 
   /** A helper for case classes. */
   def typedProductIterator[T](x: Product): Iterator[T] = {
@@ -293,8 +295,12 @@ object ScalaRunTime {
    */
   def stringOf(arg: Any): String = stringOf(arg, scala.Int.MaxValue)
   def stringOf(arg: Any, maxElements: Int): String = {
-    def isScalaClass(x: AnyRef) =
-      Option(x.getClass.getPackage) exists (_.getName startsWith "scala.")
+    def packageOf(x: AnyRef) = x.getClass.getPackage match {
+      case null   => ""
+      case p      => p.getName
+    }
+    def isScalaClass(x: AnyRef)         = packageOf(x) startsWith "scala."
+    def isScalaCompilerClass(x: AnyRef) = packageOf(x) startsWith "scala.tools.nsc."
 
     // When doing our own iteration is dangerous
     def useOwnToString(x: Any) = x match {
@@ -310,7 +316,8 @@ object ScalaRunTime {
       case _: TraversableView[_, _] => true
       // Don't want to a) traverse infinity or b) be overly helpful with peoples' custom
       // collections which may have useful toString methods - ticket #3710
-      case x: Traversable[_]  => !x.hasDefiniteSize || !isScalaClass(x)
+      // or c) print AbstractFiles which are somehow also Iterable[AbstractFile]s.
+      case x: Traversable[_] => !x.hasDefiniteSize || !isScalaClass(x) || isScalaCompilerClass(x)
       // Otherwise, nothing could possibly go wrong
       case _ => false
     }
