@@ -38,7 +38,7 @@
 			<version>@VERSION@</version>
 		</dependency>
 		<dependency>
-			<groupId>org.scala-lang</groupId>
+                        <groupId>org.scala-lang.virtualized</groupId>
 			<artifactId>scala-reflect</artifactId>
 			<version>@VERSION@</version>
 		</dependency>
