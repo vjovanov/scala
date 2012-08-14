@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author Iulian Dragos
  */
 
@@ -69,7 +69,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   import definitions.{
     BooleanClass, UnitClass, ArrayClass,
     ScalaValueClasses, isPrimitiveValueClass, isPrimitiveValueType,
-    SpecializedClass, UnspecializedClass, AnyRefClass, ObjectClass, AnyRefModule,
+    SpecializedClass, UnspecializedClass, AnyRefClass, ObjectClass,
     GroupOfSpecializable, uncheckedVarianceClass, ScalaInlineClass
   }
   import rootMirror.RootClass
@@ -326,7 +326,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     }
   }
 
-  lazy val specializableTypes = (ScalaValueClasses :+ AnyRefClass) map (_.tpe) sorted
+  lazy val specializableTypes = ScalaValueClasses map (_.tpe) sorted
 
   /** If the symbol is the companion of a value class, the value class.
    *  Otherwise, AnyRef.
@@ -452,7 +452,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   def survivingParams(params: List[Symbol], env: TypeEnv) =
     params filter {
       p =>
-      !p.isSpecialized || 
+      !p.isSpecialized ||
       !env.contains(p) ||
       !isPrimitiveValueType(env(p))
     }
@@ -506,16 +506,16 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
        *  was both already used for a map and mucho long.  So "sClass" is the
        *  specialized subclass of "clazz" throughout this file.
        */
-      
+
       // SI-5545: Eliminate classes with the same name loaded from the bytecode already present - all we need to do is
       // to force .info on them, as their lazy type will be evaluated and the symbols will be eliminated. Unfortunately
       // evaluating the info after creating the specialized class will mess the specialized class signature, so we'd
-      // better evaluate it before creating the new class symbol 
+      // better evaluate it before creating the new class symbol
       val clazzName = specializedName(clazz, env0).toTypeName
-      val bytecodeClazz = clazz.owner.info.decl(clazzName)      
+      val bytecodeClazz = clazz.owner.info.decl(clazzName)
       // debuglog("Specializing " + clazz + ", but found " + bytecodeClazz + " already there")
       bytecodeClazz.info
-      
+
       val sClass = clazz.owner.newClass(clazzName, clazz.pos, (clazz.flags | SPECIALIZED) & ~CASE)
 
       def cloneInSpecializedClass(member: Symbol, flagFn: Long => Long, newName: Name = null) =
@@ -652,11 +652,10 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
 
               info(specMember)    = Implementation(original)
               typeEnv(specMember) = env ++ typeEnv(m)
-            }
-            else debuglog({
+            } else {
               val om = forwardToOverload(m)
-              "normalizedMember " + m + " om: " + om + " " + pp(typeEnv(om))
-            })
+              debuglog("normalizedMember " + m + " om: " + om + " " + pp(typeEnv(om)))
+            }
           }
           else
             debuglog("conflicting env for " + m + " env: " + env)
@@ -762,7 +761,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         }
       }
     }
-    
+
     val subclasses = specializations(clazz.info.typeParams) filter satisfiable
     subclasses foreach {
       env =>
@@ -798,6 +797,10 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         var specializingOn = specializedParams(sym)
         val unusedStvars   = specializingOn filterNot specializedTypeVars(sym.info)
 
+        // I think the last condition should be !sym.isHidden, but that made the
+        // compiler start warning about Tuple1.scala and Tuple2.scala claiming
+        // their type parameters are used in non-specializable positions.  Why is
+        // unusedStvars.nonEmpty for these classes???
         if (unusedStvars.nonEmpty && currentRun.compiles(sym) && !sym.isSynthetic) {
           reporter.warning(sym.pos,
             "%s %s unused or used in non-specializable positions.".format(
@@ -1002,7 +1005,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
    *  Fails if such an environment cannot be found.
    *
    *  If `strict` is true, a UnifyError is thrown if unification is impossible.
-   *  
+   *
    *  If `tparams` is true, then the methods tries to unify over type params in polytypes as well.
    */
   private def unify(tp1: Type, tp2: Type, env: TypeEnv, strict: Boolean, tparams: Boolean = false): TypeEnv = (tp1, tp2) match {
@@ -1181,7 +1184,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         || specializedTypeVars(t1).nonEmpty
         || specializedTypeVars(t2).nonEmpty)
      }
-    
+
     env forall { case (tvar, tpe) =>
       matches(tvar.info.bounds.lo, tpe) && matches(tpe, tvar.info.bounds.hi) || {
         if (warnings)
@@ -1197,7 +1200,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
       }
     }
   }
-  
+
   def satisfiabilityConstraints(env: TypeEnv): Option[TypeEnv] = {
     val noconstraints = Some(emptyEnv)
     def matches(tpe1: Type, tpe2: Type): Option[TypeEnv] = {
@@ -1228,7 +1231,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   } with typechecker.Duplicators {
     private val (castfrom, castto) = casts.unzip
     private object CastMap extends SubstTypeMap(castfrom.toList, castto.toList)
-    
+
     class BodyDuplicator(_context: Context) extends super.BodyDuplicator(_context) {
       override def castType(tree: Tree, pt: Type): Tree = {
         // log(" expected type: " + pt)
@@ -1245,9 +1248,9 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         ntree
       }
     }
-    
+
     protected override def newBodyDuplicator(context: Context) = new BodyDuplicator(context)
-    
+
   }
 
   /** A tree symbol substituter that substitutes on type skolems.
@@ -1355,7 +1358,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         }
       }
     }
-    
+
     def reportError[T](body: =>T)(handler: TypeError => T): T =
       try body
       catch {
@@ -1392,7 +1395,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           else None
         } else None
       }
-      
+
       curTree = tree
       tree match {
         case Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
@@ -1566,7 +1569,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
               })
               debuglog("created special overload tree " + t)
               debuglog("created " + t)
-              reportError { 
+              reportError {
                 localTyper.typed(t)
               } {
                 _ => super.transform(tree)
@@ -1625,9 +1628,9 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           super.transform(tree)
       }
     }
-    
+
     /** Duplicate the body of the given method `tree` to the new symbol `source`.
-     *  
+     *
      *  Knowing that the method can be invoked only in the `castmap` type environment,
      *  this method will insert casts for all the expressions of types mappend in the
      *  `castmap`.

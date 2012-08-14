@@ -220,7 +220,7 @@ object ClassManifestFactory {
     */
   def abstractType[T](prefix: OptManifest[_], name: String, upperbound: ClassManifest[_], args: OptManifest[_]*): ClassManifest[T] =
     new ClassManifest[T] {
-      override def runtimeClass = upperbound.erasure
+      override def runtimeClass = upperbound.runtimeClass
       override val typeArguments = args.toList
       override def toString = prefix.toString+"#"+name+argString
     }
@@ -230,7 +230,7 @@ object ClassManifestFactory {
     */
   def refinedType[T](parent: Manifest[_], fieldNames: List[String], fieldTypes: List[Manifest[_]]): Manifest[T] =
     new RefinedManifest[T] {
-      def erasure = parent.erasure
+      override def runtimeClass = parent.runtimeClass
       def fields = fieldNames zip fieldTypes
       override def toString = parent + (fieldNames zip fieldTypes).map{case(n, t) => "val "+ n +" : "+ t}.mkString("{","; ", "}")
     }

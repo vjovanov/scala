@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 package scala.reflect
@@ -33,6 +33,9 @@ trait Trees { self: Universe =>
 
   /** Obtains string representation of a tree */
   protected def treeToString(tree: Tree): String
+
+  /** Obtains the type of the tree (we intentionally don't expose `tree.tpe` in base) */
+  protected def treeType(tree: Tree): Type
 
   /** Tree is the basis for scala's abstract syntax. The nodes are
    *  implemented as case classes, and the parameters which initialize
@@ -1357,9 +1360,8 @@ trait Trees { self: Universe =>
 
   /** ... */
   abstract class ModifiersBase {
-    def flags: FlagSet
-    def hasFlag(flags: FlagSet): Boolean
-    def hasAllFlags(flags: FlagSet): Boolean
+    def flags: FlagSet // default: NoFlags
+    def hasFlag(flag: FlagSet): Boolean
     def privateWithin: Name  // default: EmptyTypeName
     def annotations: List[Tree] // default: List()
     def mapAnnotations(f: List[Tree] => List[Tree]): Modifiers =

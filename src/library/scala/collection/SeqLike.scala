@@ -627,6 +627,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
 
   override def view = new SeqView[A, Repr] {
     protected lazy val underlying = self.repr
+    override def isEmpty = self.isEmpty
     override def iterator = self.iterator
     override def length = self.length
     override def apply(idx: Int) = self.apply(idx)
@@ -852,7 +853,7 @@ object SeqLike {
   /** Finds a particular index at which one sequence occurs in another sequence.
    *  Like `indexOf`, but finds the latest occurrence rather than earliest.
    *
-   *  @see  [[scala.collection.SeqLike], method `indexOf`
+   *  @see  [[scala.collection.SeqLike]], method `indexOf`
    */
   def lastIndexOf[B](
     source: Seq[B], sourceOffset: Int, sourceCount: Int,

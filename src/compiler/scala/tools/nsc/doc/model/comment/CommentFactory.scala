@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2011 LAMP/EPFL
+ * Copyright 2007-2012 LAMP/EPFL
  * @author  Manohar Jonnalagedda
  */
 
@@ -660,7 +660,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory with Member
         else if (check(",,")) subscript()
         else if (check("[[")) link()
         else {
-          readUntil { char == safeTagMarker || check("''") || char == '`' || check("__") || char == '^' || check(",,") || check("[[") || check("{{") || isInlineEnd || checkParaEnded || char == endOfLine }
+          readUntil { char == safeTagMarker || check("''") || char == '`' || check("__") || char == '^' || check(",,") || check("[[") || isInlineEnd || checkParaEnded || char == endOfLine }
           Text(getRead())
         }
       }

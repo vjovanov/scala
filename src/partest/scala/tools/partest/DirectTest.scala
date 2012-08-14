@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author Paul Phillips
  */
 
@@ -70,7 +70,7 @@ abstract class DirectTest extends App {
 
   /**  Constructor/main body  **/
   try show()
-  catch { case t => println(t.getMessage) ; t.printStackTrace ; sys.exit(1) }
+  catch { case t: Exception => println(t.getMessage) ; t.printStackTrace ; sys.exit(1) }
 
   /** Debugger interest only below this line **/
   protected def isDebug       = (sys.props contains "partest.debug") || (sys.env contains "PARTEST_DEBUG")

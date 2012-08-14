@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2011 LAMP/EPFL
+ * Copyright 2007-2012 LAMP/EPFL
  */
 
 package scala.tools
@@ -29,6 +29,9 @@ package object partest {
 
   implicit private[partest] def temporaryPath2File(x: Path): JFile = x.jfile
   implicit private[partest] def temporaryFile2Path(x: JFile): Path = Path(x)
+
+  implicit lazy val postfixOps = language.postfixOps
+  implicit lazy val implicitConversions = language.implicitConversions
 
   def timed[T](body: => T): (T, Long) = {
     val t1 = System.currentTimeMillis
@@ -60,7 +63,7 @@ package object partest {
 
   def allPropertiesString = {
     import collection.JavaConversions._
-    System.getProperties.toList.sorted map { case (k, v) => "%s -> %s\n".format(k, v) } mkString
+    System.getProperties.toList.sorted map { case (k, v) => "%s -> %s\n".format(k, v) } mkString ""
   }
 
   def showAllJVMInfo() {

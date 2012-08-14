@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -160,7 +160,7 @@ trait Trees extends api.Trees { self: SymbolTable =>
       new ThisSubstituter(clazz, to) transform this
 
     def hasSymbolWhich(f: Symbol => Boolean) =
-      hasSymbol && symbol != null && f(symbol)
+      (symbol ne null) && (symbol ne NoSymbol) && f(symbol)
 
     def isErroneous = (tpe ne null) && tpe.isErroneous
     def isTyped     = (tpe ne null) && !tpe.isErroneous
@@ -1032,14 +1032,14 @@ trait Trees extends api.Trees { self: SymbolTable =>
     }
   }
 
-    
+
   /** Delegate for a TypeTree symbol. This operation is unsafe because
    *  it may trigger type checking when forcing the type symbol of the
    *  underlying type.
    */
   protected def typeTreeSymbol(tree: TypeTree): Symbol =
     if (tree.tpe == null) null else tree.tpe.typeSymbol
-  
+
   // --- generic traversers and transformers
 
   override protected def itraverse(traverser: Traverser, tree: Tree): Unit = {
@@ -1274,7 +1274,7 @@ trait Trees extends api.Trees { self: SymbolTable =>
     }
   }
 
-  private def mclass(sym: Symbol) = sym map (_.asModuleSymbol.moduleClass)
+  private def mclass(sym: Symbol) = sym map (_.asModule.moduleClass)
 
   // --- specific traversers and transformers
 

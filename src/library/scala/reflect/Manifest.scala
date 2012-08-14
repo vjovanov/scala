@@ -244,7 +244,7 @@ object ManifestFactory {
     */
   def wildcardType[T](lowerBound: Manifest[_], upperBound: Manifest[_]): Manifest[T] =
     new Manifest[T] {
-      def runtimeClass = upperBound.erasure
+      def runtimeClass = upperBound.runtimeClass
       override def toString =
         "_" +
         (if (lowerBound eq Nothing) "" else " >: "+lowerBound) +
@@ -254,7 +254,7 @@ object ManifestFactory {
   /** Manifest for the intersection type `parents_0 with ... with parents_n'. */
   def intersectionType[T](parents: Manifest[_]*): Manifest[T] =
     new Manifest[T] {
-      def runtimeClass = parents.head.erasure
+      def runtimeClass = parents.head.runtimeClass
       override def toString = parents.mkString(" with ")
     }
 
@@ -263,7 +263,7 @@ object ManifestFactory {
     */
   def refinedType[T](parent: Manifest[_], fieldNames: List[String], fieldTypes: List[Manifest[_]]): Manifest[T] =
     new RefinedManifest[T] {
-      def erasure = parent.erasure
+      def runtimeClass = parent.runtimeClass
       def fields = fieldNames zip fieldTypes
       override def toString = parent + (fieldNames zip fieldTypes).map{case(n, t) => "val "+ n +" : "+ t}.mkString("{","; ", "}")
     }

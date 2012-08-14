@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -932,7 +932,6 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
       ca
     }
 
-    // TODO this method isn't exercised during bootstrapping. Open question: is it bug free?
     private def arrEncode(sb: ScalaSigBytes): Array[String] = {
       var strs: List[String]  = Nil
       val bSeven: Array[Byte] = sb.sevenBitsMayBeZero
@@ -941,14 +940,15 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
       var offset     = 0
       var encLength  = 0
       while(offset < bSeven.size) {
-        val newEncLength = encLength.toLong + (if(bSeven(offset) == 0) 2 else 1)
-        if(newEncLength > 65535) {
+        val deltaEncLength = (if(bSeven(offset) == 0) 2 else 1)
+        val newEncLength = encLength.toLong + deltaEncLength
+        if(newEncLength >= 65535) {
           val ba     = bSeven.slice(prevOffset, offset)
           strs     ::= new java.lang.String(ubytesToCharArray(ba))
           encLength  = 0
           prevOffset = offset
         } else {
-          encLength += 1
+          encLength += deltaEncLength
           offset    += 1
         }
       }
@@ -993,8 +993,13 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
         case sb@ScalaSigBytes(bytes) =>
           // see http://www.scala-lang.org/sid/10 (Storage of pickled Scala signatures in class files)
           // also JVMS Sec. 4.7.16.1 The element_value structure and JVMS Sec. 4.4.7 The CONSTANT_Utf8_info Structure.
-          val assocValue = (if(sb.fitsInOneString) strEncode(sb) else arrEncode(sb))
-          av.visit(name, assocValue)
+          if (sb.fitsInOneString)
+            av.visit(name, strEncode(sb))
+          else {
+            val arrAnnotV: asm.AnnotationVisitor = av.visitArray(name)
+            for(arg <- arrEncode(sb)) { arrAnnotV.visit(name, arg) }
+            arrAnnotV.visitEnd()
+          }
           // for the lazy val in ScalaSigBytes to be GC'ed, the invoker of emitAnnotations() should hold the ScalaSigBytes in a method-local var that doesn't escape.
 
         case ArrayAnnotArg(args) =>
@@ -1159,7 +1164,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
       val linkedClass  = moduleClass.companionClass
       val linkedModule = linkedClass.companionSymbol
       lazy val conflictingNames: Set[Name] = {
-        linkedClass.info.members collect { case sym if sym.name.isTermName => sym.name } toSet
+        (linkedClass.info.members collect { case sym if sym.name.isTermName => sym.name }).toSet
       }
       debuglog("Potentially conflicting names for forwarders: " + conflictingNames)
 
@@ -1168,6 +1173,8 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
           debuglog("No forwarder for '%s' from %s to '%s'".format(m, jclassName, moduleClass))
         else if (conflictingNames(m.name))
           log("No forwarder for " + m + " due to conflict with " + linkedClass.info.member(m.name))
+        else if (m.hasAccessBoundary)
+          log(s"No forwarder for non-public member $m")
         else {
           log("Adding static forwarder for '%s' from %s to '%s'".format(m, jclassName, moduleClass))
           if (m.isAccessor && m.accessed.hasStaticAnnotation) {
@@ -1351,7 +1358,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
 
       val ps = c.symbol.info.parents
       val superInterfaces0: List[Symbol] = if(ps.isEmpty) Nil else c.symbol.mixinClasses;
-      val superInterfaces = superInterfaces0 ++ c.symbol.annotations.flatMap(ann => newParentForAttr(ann.symbol)) distinct
+      val superInterfaces = (superInterfaces0 ++ c.symbol.annotations.flatMap(ann => newParentForAttr(ann.symbol))).distinct
 
       if(superInterfaces.isEmpty) EMPTY_STRING_ARRAY
       else mkArray(minimizeInterfaces(superInterfaces) map javaName)
@@ -2560,6 +2567,19 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
               case JUMP(whereto) =>
                 if (nextBlock != whereto) {
                   jcode goTo labels(whereto)
+                } else if(m.exh.exists(eh => eh.covers(b))) {
+                  // SI-6102: Determine whether eliding this JUMP results in an empty range being covered by some EH.
+                  // If so, emit a NOP in place of the elided JUMP, to avoid "java.lang.ClassFormatError: Illegal exception table range"
+                  val isSthgLeft = b.toList.exists {
+                    case _: LOAD_EXCEPTION => false
+                    case _: SCOPE_ENTER    => false
+                    case _: SCOPE_EXIT     => false
+                    case _: JUMP           => false
+                    case _ => true
+                  }
+                  if(!isSthgLeft) {
+                    emit(asm.Opcodes.NOP)
+                  }
                 }
 
               case CJUMP(success, failure, cond, kind) =>
@@ -3183,7 +3203,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
             hops ::= prev
             if (hops.contains(dest)) {
               // leave infinite-loops in place
-              return (dest, hops filterNot (dest eq))
+              return (dest, hops filterNot (dest eq _))
             }
             prev = dest;
             false

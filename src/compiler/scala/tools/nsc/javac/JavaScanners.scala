@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -139,7 +139,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
       kwOffset = offset
       arr
     }
-    final val tokenName = allKeywords map (_.swap) toMap
+    final val tokenName = allKeywords.map(_.swap).toMap
 
 //Token representation -----------------------------------------------------
 

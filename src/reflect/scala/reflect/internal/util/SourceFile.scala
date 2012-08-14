@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -41,7 +41,7 @@ abstract class SourceFile {
     (content drop offset) startsWith text
 
   def lineToString(index: Int): String =
-    content drop lineToOffset(index) takeWhile (c => !isLineBreakChar(c.toChar)) mkString
+    content drop lineToOffset(index) takeWhile (c => !isLineBreakChar(c.toChar)) mkString ""
 
   @tailrec
   final def skipWhitespace(offset: Int): Int =
@@ -98,7 +98,7 @@ class ScriptSourceFile(underlying: BatchSourceFile, content: Array[Char], overri
 
   override def positionInUltimateSource(pos: Position) =
     if (!pos.isDefined) super.positionInUltimateSource(pos)
-    else new OffsetPosition(underlying, pos.point + start)
+    else pos.withSource(underlying, start)
 }
 
 /** a file whose contents do not change over time */

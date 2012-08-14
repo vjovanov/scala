@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -230,13 +230,11 @@ abstract class UnPickler /*extends reflect.generic.UnPickler*/ {
           fromName(nme.expandedName(name.toTermName, owner)) orElse {
             // (3) Try as a nested object symbol.
             nestedObjectSymbol orElse {
-              // (4) Otherwise, fail.
-              //System.err.println("missing "+name+" in "+owner+"/"+owner.id+" "+owner.info.decls)
-              adjust(errorMissingRequirement(name, owner))
-              //TR FIXME: this needs a proper fix!
-              // println("WARNING: class file needed by "+classRoot.name+" is missing.\n"+
-              // "reference " + NameTransformer.decode(name.toString) + " of " + owner.tpe + " refers to nonexisting symbol.")
-              // NoSymbol
+              // (4) Call the mirror's "missing" hook.
+              adjust(mirrorThatLoaded(owner).missingHook(owner, name)) orElse {
+                // (5) Create a stub symbol to defer hard failure a little longer.
+                owner.newStubSymbol(name)
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2011 LAMP/EPFL
+ * Copyright 2005-2012 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -9,7 +9,7 @@ package internal
 import scala.collection.{ mutable, immutable }
 import util._
 
-abstract class SymbolTable extends makro.Universe
+abstract class SymbolTable extends macros.Universe
                               with Collections
                               with Names
                               with Symbols
@@ -43,7 +43,9 @@ abstract class SymbolTable extends makro.Universe
   lazy val treeBuild = gen
 
   def log(msg: => AnyRef): Unit
-  def abort(msg: String): Nothing = throw new FatalError(supplementErrorMessage(msg))
+  def warning(msg: String): Unit     = Console.err.println(msg)
+  def globalError(msg: String): Unit = abort(msg)
+  def abort(msg: String): Nothing    = throw new FatalError(supplementErrorMessage(msg))
 
   @deprecated("Give us a reason", "2.10.0")
   def abort(): Nothing = abort("unknown error")
