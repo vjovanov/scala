@@ -234,7 +234,8 @@ abstract class TreeBuilder {
     else CompoundTypeTree(Template(tps, emptyValDef, Nil))
 
   /** Captures the difference in tree building between virtualized and non-virtualized scala */
-  private abstract class TreeBuilderStrategy {
+  // private commented out since it cause "error: private class TreeBuilderStrategy escapes its defining scope as part of type TreeBuilder.this.TreeBuilderStrategy"
+  /*private <-- BUG*/ abstract class TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree
 
@@ -284,7 +285,7 @@ abstract class TreeBuilder {
   @inline final def makeApply(sel: Tree, exprs: List[Tree]): Tree = builder.makeApply(sel, exprs)
 
   // build trees for plain vanilla scala
-  private class DirectTreeBuilder extends TreeBuilderStrategy {
+  /*private <-- BUG*/ class DirectTreeBuilder extends TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
       case Apply(fn, args) =>
@@ -327,7 +328,7 @@ abstract class TreeBuilder {
   }
 
   // build trees for virtualized scala
-  private class VirtualizingTreeBuilder extends TreeBuilderStrategy {
+  /*private <-- BUG*/ class VirtualizingTreeBuilder extends TreeBuilderStrategy {
     /** Create a tree representing an assignment <lhs = rhs> */
     def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
       case Apply(fn, args) =>
