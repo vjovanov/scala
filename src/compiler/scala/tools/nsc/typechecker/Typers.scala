@@ -4144,7 +4144,11 @@ trait Typers extends Modes with Adaptations with Tags {
           }
         }
         // only under -Yvirtualize: setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
-        if (varsym.isVariable || (phase.erasedTypes && varsym.isValue && !(opt.virtualize && varsym.isMethod))) {
+        // if (varsym.isVariable || (phase.erasedTypes && varsym.isValue/* && !(opt.virtualize && varsym.isMethod)*/)) {
+        // if (varsym.isVariable ||
+        // // setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
+        // (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
+        if (varsym.isVariable || varsym.isValue && phase.erasedTypes) {
           val rhs1 = typed(rhs, EXPRmode | BYVALmode, lhs1.tpe)
           treeCopy.Assign(tree, lhs1, checkDead(rhs1)) setType UnitClass.tpe
         }
