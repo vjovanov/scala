@@ -66,6 +66,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     def isExistential: Boolean = this.isExistentiallyBound
     def isParamWithDefault: Boolean = this.hasDefault
     def isByNameParam: Boolean = this.isValueParameter && (this hasFlag BYNAMEPARAM)
+    def isImplementationArtifact: Boolean = (this hasFlag BRIDGE) || (this hasFlag VBRIDGE) || (this hasFlag ARTIFACT)
 
     def newNestedSymbol(name: Name, pos: Position, newFlags: Long, isClass: Boolean): Symbol = name match {
       case n: TermName => newTermSymbol(n, pos, newFlags)
@@ -698,13 +699,13 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
 
     /** Is this symbol an accessor method for outer? */
     final def isOuterAccessor = {
-      hasFlag(STABLE | HIDDEN) &&
+      hasFlag(STABLE | ARTIFACT) &&
       originalName == nme.OUTER
     }
 
     /** Is this symbol an accessor method for outer? */
     final def isOuterField = {
-      hasFlag(HIDDEN) &&
+      hasFlag(ARTIFACT) &&
       originalName == nme.OUTER_LOCAL
     }
 
@@ -839,7 +840,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     final def isInitialized: Boolean =
       validTo != NoPeriod
 
-    // [Eugene] todo. needs to be reviewed and [only then] rewritten without explicit returns
     /** Determines whether this symbol can be loaded by subsequent reflective compilation */
     final def isLocatable: Boolean = {
       if (this == NoSymbol) return false
