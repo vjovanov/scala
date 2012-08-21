@@ -4178,13 +4178,14 @@ trait Typers extends Modes with Adaptations with Tags {
       }
 
       def typedIf(tree: If) = {
-        val cond1 = checkDead(typed(tree.cond, EXPRmode | BYVALmode, BooleanClass.tpe))
+        val cond = tree.cond
         val thenp = tree.thenp
         val elsep = tree.elsep
-        typedIfParts(tree, cond1, thenp, elsep)
+        typedIfParts(tree, cond, thenp, elsep)
       }
 
-      def typedIfParts(tree: Tree, cond1: Tree, thenp: Tree, elsep: Tree) = {
+      def typedIfParts(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) = {
+        val cond1 = checkDead(typed(cond, EXPRmode | BYVALmode, BooleanClass.tpe))
         if (elsep.isEmpty) { // in the future, should be unnecessary
           val thenp1 = typed(thenp, UnitClass.tpe)
           treeCopy.If(tree, cond1, thenp1, elsep) setType thenp1.tpe
