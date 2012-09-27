@@ -317,25 +317,6 @@ trait Types extends api.Types { self: SymbolTable =>
     def substituteSymbols(from: List[Symbol], to: List[Symbol]): Type = substSym(from, to)
     def substituteTypes(from: List[Symbol], to: List[Type]): Type = subst(from, to)
 
-    def isConcrete = {
-      def notConcreteSym(sym: Symbol) =
-        sym.isAbstractType && !sym.isExistential
-
-      def notConcreteTpe(tpe: Type): Boolean = tpe match {
-        case ThisType(_) => false
-        case SuperType(_, _) => false
-        case SingleType(pre, sym) => notConcreteSym(sym)
-        case ConstantType(_) => false
-        case TypeRef(_, sym, args) => notConcreteSym(sym) || (args exists notConcreteTpe)
-        case RefinedType(_, _) => false
-        case ExistentialType(_, _) => false
-        case AnnotatedType(_, tp, _) => notConcreteTpe(tp)
-        case _ => true
-      }
-
-      !notConcreteTpe(this)
-    }
-
     // the only thingies that we want to splice are: 1) type parameters, 2) abstract type members
     // the thingies that we don't want to splice are: 1) concrete types (obviously), 2) existential skolems
     def isSpliceable = {
@@ -1010,7 +991,11 @@ trait Types extends api.Types { self: SymbolTable =>
     def toLongString = {
       val str = toString
       if (str == "type") widen.toString
-      else if ((str endsWith ".type") && !typeSymbol.isModuleClass) str + " (with underlying type " + widen + ")"
+      else if ((str endsWith ".type") && !typeSymbol.isModuleClass)
+        widen match {
+          case RefinedType(_, _)                      => "" + widen
+          case _                                      => s"$str (with underlying type $widen)"
+        }
       else str
     }
 
@@ -1632,7 +1617,7 @@ trait Types extends api.Types { self: SymbolTable =>
 
     override def safeToString: String = parentsString(parents) + (
       (if (settings.debug.value || parents.isEmpty || (decls.elems ne null))
-        decls.mkString("{", "; ", "}") else "")
+        fullyInitializeScope(decls).mkString("{", "; ", "}") else "")
     )
   }
 
@@ -1819,7 +1804,6 @@ trait Types extends api.Types { self: SymbolTable =>
            false
        }))
     }
-
     override def kind = "RefinedType"
   }
 
@@ -2005,9 +1989,11 @@ trait Types extends api.Types { self: SymbolTable =>
     /** A nicely formatted string with newlines and such.
      */
     def formattedToString: String =
-      parents.mkString("\n        with ") +
-      (if (settings.debug.value || parents.isEmpty || (decls.elems ne null))
-        decls.mkString(" {\n  ", "\n  ", "\n}") else "")
+      parents.mkString("\n        with ") + (
+        if (settings.debug.value || parents.isEmpty || (decls.elems ne null))
+         fullyInitializeScope(decls).mkString(" {\n  ", "\n  ", "\n}")
+        else ""
+      )
   }
 
   object ClassInfoType extends ClassInfoTypeExtractor
@@ -2032,45 +2018,10 @@ trait Types extends api.Types { self: SymbolTable =>
     override def kind = "ConstantType"
   }
 
-  final class UniqueConstantType(value: Constant) extends ConstantType(value) {
-    /** Save the type of `value`. For Java enums, it depends on finding the linked class,
-     *  which might not be found after `flatten`. */
-    private lazy val _tpe: Type = value.tpe
-    override def underlying: Type = _tpe
-  }
+  final class UniqueConstantType(value: Constant) extends ConstantType(value)
 
   object ConstantType extends ConstantTypeExtractor {
-    def apply(value: Constant): ConstantType = {
-      val tpe = new UniqueConstantType(value)
-      if (value.tag == ClazzTag) {
-        // if we carry a classOf, we might be in trouble
-        // http://groups.google.com/group/scala-internals/browse_thread/thread/45185b341aeb6a30
-        // I don't have time for a thorough fix, so I put a hacky workaround here
-        val alreadyThere = uniques findEntry tpe
-        if ((alreadyThere ne null) && (alreadyThere ne tpe) && (alreadyThere.toString != tpe.toString)) {
-          // we need to remove a stale type that has the same hashcode as we do
-          // HashSet doesn't support removal, and this makes our task non-trivial
-          // also we cannot simply recreate it, because that'd skew hashcodes (that change over time, omg!)
-          // the only solution I can see is getting into the underlying array and sneakily manipulating it
-          val ftable = uniques.getClass.getDeclaredFields().find(f => f.getName endsWith "table").get
-          ftable.setAccessible(true)
-          val table = ftable.get(uniques).asInstanceOf[Array[AnyRef]]
-          def overwrite(hc: Int, x: Type) {
-            def index(x: Int): Int = math.abs(x % table.length)
-            var h = index(hc)
-            var entry = table(h)
-            while (entry ne null) {
-              if (x == entry)
-                table(h) = x
-              h = index(h + 1)
-              entry = table(h)
-            }
-          }
-          overwrite(tpe.##, tpe)
-        }
-      }
-      unique(tpe).asInstanceOf[ConstantType]
-    }
+    def apply(value: Constant) = unique(new UniqueConstantType(value))
   }
 
   /* Syncnote: The `volatile` var and `pendingVolatiles` mutable set need not be protected
@@ -2466,7 +2417,7 @@ trait Types extends api.Types { self: SymbolTable =>
 
     def refinementString = (
       if (sym.isStructuralRefinement) (
-        decls filter (sym => sym.isPossibleInRefinement && sym.isPublic)
+        fullyInitializeScope(decls) filter (sym => sym.isPossibleInRefinement && sym.isPublic)
           map (_.defString)
           mkString("{", "; ", "}")
       )
@@ -3468,9 +3419,9 @@ trait Types extends api.Types { self: SymbolTable =>
   }
 
   /** A temporary type representing the erasure of a user-defined value type.
-   *  Created during phase reasure, eliminated again in posterasure.
-   *  @param   sym The value class symbol
-   *  @param   underlying  The underlying type before erasure
+   *  Created during phase erasure, eliminated again in posterasure.
+   *
+   *  @param   original  The underlying type before erasure
    */
   abstract case class ErasedValueType(original: TypeRef) extends UniqueType {
     override def safeToString = "ErasedValueType("+original+")"
@@ -3493,6 +3444,16 @@ trait Types extends api.Types { self: SymbolTable =>
     override def safeToString = "<?>"
     override def kind = "LazyType"
   }
+
+  /** A marker trait representing an as-yet unevaluated type
+   *  which doesn't assign flags to the underlying symbol.
+   */
+  trait FlagAgnosticCompleter extends LazyType
+
+  /** A marker trait representing an as-yet unevaluated type
+   *  which assigns flags to the underlying symbol.
+   */
+  trait FlagAssigningCompleter extends LazyType
 
   abstract class LazyPolyType(override val typeParams: List[Symbol]) extends LazyType {
     override def safeToString =
@@ -3712,10 +3673,15 @@ trait Types extends api.Types { self: SymbolTable =>
    *  may or may not be poly? (It filched the standard "canonical creator" name.)
    */
   object GenPolyType {
-    def apply(tparams: List[Symbol], tpe: Type): Type = (
+    def apply(tparams: List[Symbol], tpe: Type): Type = {
+      tpe match {
+        case MethodType(_, _) =>
+          assert(tparams forall (_.isInvariant), "Trying to create a method with variant type parameters: " + ((tparams, tpe)))
+        case _                =>
+      }
       if (tparams.nonEmpty) typeFun(tparams, tpe)
       else tpe // it's okay to be forgiving here
-    )
+    }
     def unapply(tpe: Type): Option[(List[Symbol], Type)] = tpe match {
       case PolyType(tparams, restpe) => Some((tparams, restpe))
       case _                         => Some((Nil, tpe))
@@ -3741,12 +3707,12 @@ trait Types extends api.Types { self: SymbolTable =>
    *
    *  tpe1 where { tparams }
    *
-   *  where `tpe1` is the result of extrapolating `tpe` wrt to `tparams`.
+   *  where `tpe1` is the result of extrapolating `tpe` with respect to `tparams`.
    *  Extrapolating means that type variables in `tparams` occurring
    *  in covariant positions are replaced by upper bounds, (minus any
    *  SingletonClass markers), type variables in `tparams` occurring in
    *  contravariant positions are replaced by upper bounds, provided the
-   *  resulting type is legal wrt to stability, and does not contain any type
+   *  resulting type is legal with regard to stability, and does not contain any type
    *  variable in `tparams`.
    *
    *  The abstraction drops all type parameters that are not directly or
@@ -3944,13 +3910,15 @@ trait Types extends api.Types { self: SymbolTable =>
     def avoidWiden: Boolean = avoidWidening
 
     def addLoBound(tp: Type, isNumericBound: Boolean = false) {
-      if (isNumericBound && isNumericValueType(tp)) {
-        if (numlo == NoType || isNumericSubType(numlo, tp))
-          numlo = tp
-        else if (!isNumericSubType(tp, numlo))
-          numlo = numericLoBound
+      if (!lobounds.contains(tp)) {
+        if (isNumericBound && isNumericValueType(tp)) {
+          if (numlo == NoType || isNumericSubType(numlo, tp))
+            numlo = tp
+          else if (!isNumericSubType(tp, numlo))
+            numlo = numericLoBound
+        }
+        else lobounds ::= tp
       }
-      else lobounds ::= tp
     }
 
     def checkWidening(tp: Type) {
@@ -3962,14 +3930,16 @@ trait Types extends api.Types { self: SymbolTable =>
     }
 
     def addHiBound(tp: Type, isNumericBound: Boolean = false) {
-      checkWidening(tp)
-      if (isNumericBound && isNumericValueType(tp)) {
-        if (numhi == NoType || isNumericSubType(tp, numhi))
-          numhi = tp
-        else if (!isNumericSubType(numhi, tp))
-          numhi = numericHiBound
+      if (!hibounds.contains(tp)) {
+        checkWidening(tp)
+        if (isNumericBound && isNumericValueType(tp)) {
+          if (numhi == NoType || isNumericSubType(tp, numhi))
+            numhi = tp
+          else if (!isNumericSubType(numhi, tp))
+            numhi = numericHiBound
+        }
+        else hibounds ::= tp
       }
-      else hibounds ::= tp
     }
 
     def isWithinBounds(tp: Type): Boolean =
@@ -4434,7 +4404,7 @@ trait Types extends api.Types { self: SymbolTable =>
     var capturedSkolems: List[Symbol] = List()
     var capturedParams: List[Symbol] = List()
 
-    @inline private def skipPrefixOf(pre: Type, clazz: Symbol) = (
+    private def skipPrefixOf(pre: Type, clazz: Symbol) = (
       (pre eq NoType) || (pre eq NoPrefix) || !isPossiblePrefix(clazz)
     )
     override def mapOver(tree: Tree, giveup: ()=>Nothing): Tree = {
@@ -5122,9 +5092,9 @@ trait Types extends api.Types { self: SymbolTable =>
         // in addition to making subtyping "more correct" for type vars,
         // it should avoid the stackoverflow that's been plaguing us (https://groups.google.com/d/topic/scala-internals/2gHzNjtB4xA/discussion)
         // this method is only called when subtyping hits a recursion threshold (subsametypeRecursions >= LogPendingSubTypesThreshold)
-        @inline def suspend(tp: Type) =
+        def suspend(tp: Type) =
           if (tp.isGround) null else suspendTypeVarsInType(tp)
-        @inline def revive(suspension: List[TypeVar]) =
+        def revive(suspension: List[TypeVar]) =
           if (suspension ne null) suspension foreach (_.suspended = false)
 
         val suspensions = Array(tp1, stp.tp1, tp2, stp.tp2) map suspend
@@ -5626,7 +5596,7 @@ trait Types extends api.Types { self: SymbolTable =>
       case _: SingletonType =>
         tp2 match {
           case _: SingletonType =>
-            @inline def chaseDealiasedUnderlying(tp: Type): Type = {
+            def chaseDealiasedUnderlying(tp: Type): Type = {
               var origin = tp
               var next = origin.underlying.dealias
               while (next.isInstanceOf[SingletonType]) {
@@ -5724,8 +5694,8 @@ trait Types extends api.Types { self: SymbolTable =>
 
   /** Does this type have a prefix that begins with a type variable,
    *  or is it a refinement type? For type prefixes that fulfil this condition,
-   *  type selections with the same name of equal (wrt) =:= prefixes are
-   *  considered equal wrt =:=
+   *  type selections with the same name of equal (as determined by `=:=`) prefixes are
+   *  considered equal in regard to `=:=`.
    */
   def beginsWithTypeVarOrIsRefined(tp: Type): Boolean = tp match {
     case SingleType(pre, sym) =>
@@ -6372,7 +6342,7 @@ trait Types extends api.Types { self: SymbolTable =>
 
         // Produce a single type for this frontier by merging the prefixes and arguments of those
         // typerefs that share the same symbol: that symbol is the current maximal symbol for which
-        // the invariant holds, i.e., the one that conveys most information wrt subtyping. Before
+        // the invariant holds, i.e., the one that conveys most information regarding subtyping. Before
         // merging, strip targs that refer to bound tparams (when we're computing the lub of type
         // constructors.) Also filter out all types that are a subtype of some other type.
         if (isUniformFrontier) {
@@ -6421,7 +6391,7 @@ trait Types extends api.Types { self: SymbolTable =>
     loop(initialBTSes)
   }
 
-  /** The minimal symbol (wrt Symbol.isLess) of a list of types */
+  /** The minimal symbol of a list of types (as determined by `Symbol.isLess`). */
   private def minSym(tps: List[Type]): Symbol =
     (tps.head.typeSymbol /: tps.tail) {
       (sym1, tp2) => if (tp2.typeSymbol isLess sym1) tp2.typeSymbol else sym1
@@ -6547,7 +6517,7 @@ trait Types extends api.Types { self: SymbolTable =>
    *  test/continuations-neg/function3.scala goes into an infinite loop.
    *  (Even if the calls are to typeSymbolDirect.)
    */
-  def isNumericSubType(tp1: Type, tp2: Type) = (
+  def isNumericSubType(tp1: Type, tp2: Type): Boolean = (
        isNumericValueType(tp1)
     && isNumericValueType(tp2)
     && isNumericSubClass(tp1.typeSymbol, tp2.typeSymbol)
@@ -6703,7 +6673,7 @@ trait Types extends api.Types { self: SymbolTable =>
   private var globalGlbDepth = 0
   private final val globalGlbLimit = 2
 
-  /** The greatest lower bound wrt <:< of a list of types */
+  /** The greatest lower bound of a list of types (as determined by `<:<`). */
   def glb(ts: List[Type]): Type = elimSuper(ts) match {
     case List() => AnyClass.tpe
     case List(t) => t
@@ -6725,8 +6695,8 @@ trait Types extends api.Types { self: SymbolTable =>
     case ts0 => glbNorm(ts0, depth)
   }
 
-  /** The greatest lower bound wrt <:< of a list of types, which have been normalized
-   *  wrt elimSuper */
+  /** The greatest lower bound of a list of types (as determined by `<:<`), which have been normalized
+   *  with regard to `elimSuper`. */
   protected def glbNorm(ts: List[Type], depth: Int): Type = {
     def glb0(ts0: List[Type]): Type = ts0 match {
       case List() => AnyClass.tpe

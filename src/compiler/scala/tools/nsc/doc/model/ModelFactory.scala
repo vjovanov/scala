@@ -154,7 +154,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
       if (!sym.isTrait && (sym hasFlag Flags.ABSTRACT)) fgs += Paragraph(Text("abstract"))
       /* Resetting the DEFERRED flag is a little trick here for refined types: (example from scala.collections)
        * {{{
-       *     implicit def traversable2ops[T](t: collection.GenTraversableOnce[T]) = new TraversableOps[T] {
+       *     implicit def traversable2ops[T](t: scala.collection.GenTraversableOnce[T]) = new TraversableOps[T] {
        *       def isParallel = ...
        * }}}
        * the type the method returns is TraversableOps, which has all-abstract symbols. But in reality, it couldn't have
@@ -209,7 +209,8 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
       ((!sym.isTrait && ((sym hasFlag Flags.ABSTRACT) || (sym hasFlag Flags.DEFERRED)) && (!isImplicitlyInherited)) ||
       sym.isAbstractClass || sym.isAbstractType) && !sym.isSynthetic
     def isTemplate = false
-    lazy val signature = {
+    def signature = externalSignature(sym)
+    lazy val signatureCompat = {
 
       def defParams(mbr: Any): String = mbr match {
         case d: MemberEntity with Def =>
@@ -402,7 +403,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
      * This is the final point in the core model creation: no DocTemplates are created after the model has finished, but
      * inherited templates and implicit members are added to the members at this point.
      */
-    def completeModel: Unit = {
+    def completeModel(): Unit = {
       // DFS completion
       // since alias types and abstract types have no own members, there's no reason for them to call completeModel
       if (!sym.isAliasType && !sym.isAbstractType)
@@ -894,9 +895,9 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
   }
 
   /** */
-  def makeAnnotation(annot: AnnotationInfo): Annotation = {
+  def makeAnnotation(annot: AnnotationInfo): scala.tools.nsc.doc.model.Annotation = {
     val aSym = annot.symbol
-    new EntityImpl(aSym, makeTemplate(aSym.owner)) with Annotation {
+    new EntityImpl(aSym, makeTemplate(aSym.owner)) with scala.tools.nsc.doc.model.Annotation {
       lazy val annotationClass =
         makeTemplate(annot.symbol)
       val arguments = { // lazy
@@ -1082,5 +1083,17 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
     (settings.docExpandAllTypes.value && (bSym.sourceFile != null)) ||
     { val rawComment = global.expandedDocComment(bSym, inTpl.sym)
       rawComment.contains("@template") || rawComment.contains("@documentable") }
+
+  def findExternalLink(name: String): Option[LinkTo] =
+    settings.extUrlMapping find {
+      case (pkg, _) => name startsWith pkg
+    } map {
+      case (_, url) => LinkToExternal(name, url + "#" + name)
+    }
+
+  def externalSignature(sym: Symbol) = {
+    sym.info // force it, otherwise we see lazy types
+    (sym.nameString + sym.signatureString).replaceAll("\\s", "")
+  }
 }
 

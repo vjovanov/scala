@@ -77,7 +77,7 @@ trait Infer {
     val isUnapplySeq     = unappSym.name == nme.unapplySeq
     val booleanExtractor = resTp.typeSymbolDirect == BooleanClass
 
-    @inline def seqToRepeatedChecked(tp: Type) = {
+    def seqToRepeatedChecked(tp: Type) = {
       val toRepeated = seqToRepeated(tp)
       if (tp eq toRepeated) throw new TypeError("(the last tuple-component of) the result type of an unapplySeq must be a Seq[_]")
       else toRepeated
@@ -280,7 +280,16 @@ trait Infer {
 
     def issue(err: AbsTypeError): Unit = context.issue(err)
 
-    def isPossiblyMissingArgs(found: Type, req: Type) = (found.resultApprox ne found) && isWeaklyCompatible(found.resultApprox, req)
+    def isPossiblyMissingArgs(found: Type, req: Type) = (
+      false
+      /** However it is that this condition is expected to imply
+       *  "is possibly missing args", it is too weak.  It is
+       *  better to say nothing than to offer misleading guesses.
+
+         (found.resultApprox ne found)
+      && isWeaklyCompatible(found.resultApprox, req)
+      */
+    )
 
     def explainTypes(tp1: Type, tp2: Type) =
       withDisambiguation(List(), tp1, tp2)(global.explainTypes(tp1, tp2))
@@ -517,8 +526,8 @@ trait Infer {
      *  and the code is not exactly readable.
      */
     object AdjustedTypeArgs {
-      val Result = collection.mutable.LinkedHashMap
-      type Result = collection.mutable.LinkedHashMap[Symbol, Option[Type]]
+      val Result = scala.collection.mutable.LinkedHashMap
+      type Result = scala.collection.mutable.LinkedHashMap[Symbol, Option[Type]]
 
       def unapply(m: Result): Some[(List[Symbol], List[Type])] = Some(toLists(
         (m collect {case (p, Some(a)) => (p, a)}).unzip  ))
@@ -539,9 +548,9 @@ trait Infer {
         })
       }
 
-      @inline private def toLists[A1, A2](pxs: (Iterable[A1], Iterable[A2])) = (pxs._1.toList, pxs._2.toList)
-      @inline private def toLists[A1, A2, A3](pxs: (Iterable[A1], Iterable[A2], Iterable[A3])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList)
-      @inline private def toLists[A1, A2, A3, A4](pxs: (Iterable[A1], Iterable[A2], Iterable[A3], Iterable[A4])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList, pxs._4.toList)
+      private def toLists[A1, A2](pxs: (Iterable[A1], Iterable[A2])) = (pxs._1.toList, pxs._2.toList)
+      private def toLists[A1, A2, A3](pxs: (Iterable[A1], Iterable[A2], Iterable[A3])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList)
+      private def toLists[A1, A2, A3, A4](pxs: (Iterable[A1], Iterable[A2], Iterable[A3], Iterable[A4])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList, pxs._4.toList)
     }
 
     /** Retract arguments that were inferred to Nothing because inference failed. Correct types for repeated params.
@@ -914,10 +923,13 @@ trait Infer {
     /** Is sym1 (or its companion class in case it is a module) a subclass of
      *  sym2 (or its companion class in case it is a module)?
      */
-    def isProperSubClassOrObject(sym1: Symbol, sym2: Symbol): Boolean =
-      sym1 != sym2 && sym1 != NoSymbol && (sym1 isSubClass sym2) ||
-      sym1.isModuleClass && isProperSubClassOrObject(sym1.linkedClassOfClass, sym2) ||
-      sym2.isModuleClass && isProperSubClassOrObject(sym1, sym2.linkedClassOfClass)
+    def isProperSubClassOrObject(sym1: Symbol, sym2: Symbol): Boolean = (
+      (sym1 != sym2) && (sym1 != NoSymbol) && (
+           (sym1 isSubClass sym2)
+        || (sym1.isModuleClass && isProperSubClassOrObject(sym1.linkedClassOfClass, sym2))
+        || (sym2.isModuleClass && isProperSubClassOrObject(sym1, sym2.linkedClassOfClass))
+      )
+    )
 
     /** is symbol `sym1` defined in a proper subclass of symbol `sym2`?
      */
@@ -1373,14 +1385,17 @@ trait Infer {
             else =:=
           )
           (arg hasAnnotation UncheckedClass) || {
-            val TypeRef(_, sym, args) = arg.withoutAnnotations
-
-            (    isLocalBinding(sym)
-              || arg.typeSymbol.isTypeParameterOrSkolem
-              || (sym.name == tpnme.WILDCARD) // avoid spurious warnings on HK types
-              || check(arg, param.tpeHK, conforms)
-              || warn("non-variable type argument " + arg)
-            )
+            arg.withoutAnnotations match {
+              case TypeRef(_, sym, args) =>
+                (    isLocalBinding(sym)
+                  || arg.typeSymbol.isTypeParameterOrSkolem
+                  || (sym.name == tpnme.WILDCARD) // avoid spurious warnings on HK types
+                  || check(arg, param.tpeHK, conforms)
+                  || warn("non-variable type argument " + arg)
+                )
+              case _ =>
+                warn("non-variable type argument " + arg)
+            }
           }
         }
 

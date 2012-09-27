@@ -7,10 +7,10 @@ package scala.tools.nsc
 package typechecker
 
 import symtab.Flags._
-import collection.{ mutable, immutable }
+import scala.collection.{ mutable, immutable }
 import transform.InfoTransform
 import scala.collection.mutable.ListBuffer
-import language.postfixOps
+import scala.language.postfixOps
 
 /** <p>
  *    Post-attribution checking and transformation.
@@ -38,7 +38,7 @@ import language.postfixOps
  *
  *  @todo    Check whether we always check type parameter bounds.
  */
-abstract class RefChecks extends InfoTransform with reflect.internal.transform.RefChecks {
+abstract class RefChecks extends InfoTransform with scala.reflect.internal.transform.RefChecks {
 
   val global: Global               // need to repeat here because otherwise last mixin defines global as
                                    // SymbolTable. If we had DOT this would not be an issue
@@ -430,6 +430,7 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
             overrideError("cannot override a macro")
           } else {
             checkOverrideTypes()
+            checkOverrideDeprecated()
             if (settings.warnNullaryOverride.value) {
               if (other.paramss.isEmpty && !member.paramss.isEmpty) {
                 unit.warning(member.pos, "non-nullary method overrides nullary method")
@@ -506,6 +507,14 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
                 case _ =>
               }
             }
+          }
+        }
+
+        def checkOverrideDeprecated() {
+          if (other.hasDeprecatedOverridingAnnotation) {
+            val suffix = other.deprecatedOverridingMessage map (": " + _) getOrElse ""
+            val msg = s"overriding ${other.fullLocationString} is deprecated$suffix"
+            unit.deprecationWarning(member.pos, msg)
           }
         }
       }
@@ -1197,6 +1206,23 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
       case _ =>
     }
 
+    // SI-6276 warn for `def foo = foo` or `val bar: X = bar`, which come up more frequently than you might think.
+    def checkInfiniteLoop(valOrDef: ValOrDefDef) {
+      def callsSelf = valOrDef.rhs match {
+        case t @ (Ident(_) | Select(This(_), _)) =>
+          t hasSymbolWhich (_.accessedOrSelf == valOrDef.symbol)
+        case _ => false
+      }
+      val trivialInifiniteLoop = (
+        !valOrDef.isErroneous
+     && !valOrDef.symbol.isValueParameter
+     && valOrDef.symbol.paramss.isEmpty
+     && callsSelf
+      )
+      if (trivialInifiniteLoop)
+        unit.warning(valOrDef.rhs.pos, s"${valOrDef.symbol.fullLocationString} does nothing other than call itself recursively")
+    }
+
 // Transformation ------------------------------------------------------------
 
     /* Convert a reference to a case factory of type `tpe` to a new of the class it produces. */
@@ -1605,12 +1631,14 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
       case NullaryMethodType(restpe) if restpe.typeSymbol == UnitClass =>
         // this may be the implementation of e.g. a generic method being parameterized
         // on Unit, in which case we had better let it slide.
-        if (sym.isGetter || sym.allOverriddenSymbols.exists(over => !(over.tpe.resultType =:= sym.tpe.resultType))) ()
-        else unit.warning(sym.pos,
-          "side-effecting nullary methods are discouraged: suggest defining as `def %s()` instead".format(
-           sym.name.decode)
+        val isOk = (
+             sym.isGetter
+          || sym.allOverriddenSymbols.exists(over => !(over.tpe.resultType =:= sym.tpe.resultType))
+          || (sym.name containsName nme.DEFAULT_GETTER_STRING)
         )
-        case _ => ()
+        if (!isOk)
+          unit.warning(sym.pos, s"side-effecting nullary methods are discouraged: suggest defining as `def ${sym.name.decode}()` instead")
+      case _ => ()
     }
 
     // Verify classes extending AnyVal meet the requirements
@@ -1618,6 +1646,8 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
       if ((clazz isSubClass AnyValClass) && !isPrimitiveValueClass(clazz)) {
         if (clazz.isTrait)
           unit.error(clazz.pos, "Only classes (not traits) are allowed to extend AnyVal")
+        else if ((clazz != AnyValClass) && clazz.hasFlag(ABSTRACT))
+          unit.error(clazz.pos, "`abstract' modifier cannot be used with value classes")
       }
     }
 
@@ -1638,6 +1668,7 @@ abstract class RefChecks extends InfoTransform with reflect.internal.transform.R
 
           case ValDef(_, _, _, _) | DefDef(_, _, _, _, _, _) =>
             checkDeprecatedOvers(tree)
+            checkInfiniteLoop(tree.asInstanceOf[ValOrDefDef])
             if (settings.warnNullaryUnit.value)
               checkNullaryMethodReturnType(sym)
             if (settings.warnInaccessible.value) {

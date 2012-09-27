@@ -19,7 +19,7 @@ case class StringContext(parts: String*) {
 
   import StringContext._
 
-  /** Checks that the given arguments `args` number one less than the number
+  /** Checks that the length of the given argument `args` is one less than the number
    *  of `parts` supplied to the enclosing `StringContext`.
    *  @param `args` The arguments to be checked.
    *  @throws An `IllegalArgumentException` if this is not the case.
@@ -37,7 +37,7 @@ case class StringContext(parts: String*) {
    *  @throws An `IllegalArgumentException`
    *          if the number of `parts` in the enclosing `StringContext` does not exceed
    *          the number of arguments `arg` by exactly 1.
-   *  @throws A `StringContext.InvalidEscapeException` if if a `parts` string contains a backslash (`\`) character
+   *  @throws A `StringContext.InvalidEscapeException` if a `parts` string contains a backslash (`\`) character
    *          that does not start a valid escape sequence.
    */
   def s(args: Any*): String = standardInterpolator(treatEscapes, args)
@@ -51,7 +51,7 @@ case class StringContext(parts: String*) {
    *  @throws An `IllegalArgumentException`
    *          if the number of `parts` in the enclosing `StringContext` does not exceed
    *          the number of arguments `arg` by exactly 1.
-   *  @throws A `StringContext.InvalidEscapeException` if if a `parts` string contains a backslash (`\`) character
+   *  @throws A `StringContext.InvalidEscapeException` if a `parts` string contains a backslash (`\`) character
    *          that does not start a valid escape sequence.
    */
   def raw(args: Any*): String = standardInterpolator(identity, args)
@@ -96,13 +96,14 @@ case class StringContext(parts: String*) {
    *      string literally. This is achieved by replacing each such occurrence by the
    *      format specifier `%%`.
    */
-  // The implementation is magically hardwired into `scala.tools.reflect.MacroImplementations.macro_StringInterpolation_f`
+  // The implementation is hardwired to `scala.tools.reflect.MacroImplementations.macro_StringInterpolation_f`
+  // Using the mechanism implemented in `scala.tools.reflect.FastTrack`
   def f(args: Any*): String = ??? // macro
 }
 
 object StringContext {
 
-  /** An exception that is thrown if a string contains a backslash (`\`) character that
+  /** An exception that is thrown if a string contains a backslash (`\`) character
    *  that does not start a valid escape sequence.
    *  @param  str   The offending string
    *  @param  idx   The index of the offending backslash character in `str`.

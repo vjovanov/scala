@@ -1,10 +1,7 @@
 package scala.tools
 package reflect
 
-import scala.reflect.api.Universe
-import scala.reflect.base.MirrorOf
-
-trait ToolBox[U <: Universe] {
+trait ToolBox[U <: scala.reflect.api.Universe] {
 
   /** Underlying universe of a ToolBox
    */
@@ -12,7 +9,7 @@ trait ToolBox[U <: Universe] {
 
   /** Underlying mirror of a ToolBox
    */
-  val mirror: MirrorOf[u.type]
+  val mirror: u.Mirror
 
   /** Front end of the toolbox.
    *
@@ -80,18 +77,23 @@ trait ToolBox[U <: Universe] {
   def resetLocalAttrs(tree: u.Tree): u.Tree
 
   /** .. */
-  def parseExpr(code: String): u.Tree
+  def parse(code: String): u.Tree
 
-  /** Compiles and runs a tree using this ToolBox.
+  /** Compiles a tree using this ToolBox.
    *
    *  If the tree has unresolved type variables (represented as instances of `FreeTypeSymbol` symbols),
    *  then they all have to be resolved first using `Tree.substituteTypes`, or an error occurs.
    *
    *  This spawns the compiler at the Namer phase, and pipelines the tree through that compiler.
-   *  Currently `runExpr` does not accept trees that already typechecked, because typechecking isn't idempotent.
+   *  Currently `compile` does not accept trees that already typechecked, because typechecking isn't idempotent.
    *  For more info, take a look at https://issues.scala-lang.org/browse/SI-5464.
    */
-  def runExpr(tree: u.Tree): Any
+  def compile(tree: u.Tree): () => Any
+
+  /** Compiles and runs a tree using this ToolBox.
+   *  Is equivalent to `compile(tree)()`.
+   */
+  def eval(tree: u.Tree): Any
 }
 
 /** Represents an error during toolboxing

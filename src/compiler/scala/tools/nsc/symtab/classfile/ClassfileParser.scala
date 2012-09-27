@@ -844,7 +844,7 @@ abstract class ClassfileParser {
     GenPolyType(ownTypeParams, tpe)
   } // sigToType
 
-  class TypeParamsType(override val typeParams: List[Symbol]) extends LazyType {
+  class TypeParamsType(override val typeParams: List[Symbol]) extends LazyType with FlagAgnosticCompleter {
     override def complete(sym: Symbol) { throw new AssertionError("cyclic type dereferencing") }
   }
 
@@ -1164,7 +1164,7 @@ abstract class ClassfileParser {
       originalName + " in " + outerName + "(" + externalName +")"
   }
 
-  object innerClasses extends collection.mutable.HashMap[Name, InnerClassEntry] {
+  object innerClasses extends scala.collection.mutable.HashMap[Name, InnerClassEntry] {
     /** Return the Symbol of the top level class enclosing `name`,
      *  or 'name's symbol if no entry found for `name`.
      */
@@ -1228,7 +1228,7 @@ abstract class ClassfileParser {
     }
   }
 
-  class LazyAliasType(alias: Symbol) extends LazyType {
+  class LazyAliasType(alias: Symbol) extends LazyType with FlagAgnosticCompleter {
     override def complete(sym: Symbol) {
       sym setInfo createFromClonedSymbols(alias.initialize.typeParams, alias.tpe)(typeFun)
     }
@@ -1273,7 +1273,7 @@ abstract class ClassfileParser {
         sym.privateWithin = sym.enclosingTopLevelClass.owner
   }
 
-  @inline private def isPrivate(flags: Int)     = (flags & JAVA_ACC_PRIVATE) != 0
-  @inline private def isStatic(flags: Int)      = (flags & JAVA_ACC_STATIC) != 0
-  @inline private def hasAnnotation(flags: Int) = (flags & JAVA_ACC_ANNOTATION) != 0
+  private def isPrivate(flags: Int)     = (flags & JAVA_ACC_PRIVATE) != 0
+  private def isStatic(flags: Int)      = (flags & JAVA_ACC_STATIC) != 0
+  private def hasAnnotation(flags: Int) = (flags & JAVA_ACC_ANNOTATION) != 0
 }

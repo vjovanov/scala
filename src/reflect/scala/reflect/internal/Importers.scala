@@ -3,7 +3,7 @@ package internal
 import scala.collection.mutable.WeakHashMap
 
 // SI-6241: move importers to a mirror
-trait Importers { self: SymbolTable =>
+trait Importers extends api.Importers { self: SymbolTable =>
 
   def mkImporter(from0: api.Universe): Importer { val from: from0.type } = (
     if (self eq from0) {
@@ -32,7 +32,7 @@ trait Importers { self: SymbolTable =>
     // fixups and maps prevent stackoverflows in importer
     var pendingSyms = 0
     var pendingTpes = 0
-    lazy val fixups = collection.mutable.MutableList[Function0[Unit]]()
+    lazy val fixups = scala.collection.mutable.MutableList[Function0[Unit]]()
     def addFixup(fixup: => Unit): Unit = fixups += (() => fixup)
     def tryFixup(): Unit = {
       if (pendingSyms == 0 && pendingTpes == 0) {
@@ -72,9 +72,9 @@ trait Importers { self: SymbolTable =>
           case x: from.ModuleSymbol =>
             linkReferenced(myowner.newModuleSymbol(myname, mypos, myflags), x, importSymbol)
           case x: from.FreeTermSymbol =>
-            newFreeTermSymbol(importName(x.name).toTermName, importType(x.info), x.value, x.flags, x.origin)
+            newFreeTermSymbol(importName(x.name).toTermName, x.value, x.flags, x.origin) setInfo importType(x.info)
           case x: from.FreeTypeSymbol =>
-            newFreeTypeSymbol(importName(x.name).toTypeName, importType(x.info), x.value, x.flags, x.origin)
+            newFreeTypeSymbol(importName(x.name).toTypeName, x.flags, x.origin)
           case x: from.TermSymbol =>
             linkReferenced(myowner.newValue(myname, mypos, myflags), x, importSymbol)
           case x: from.TypeSkolem =>
@@ -104,7 +104,7 @@ trait Importers { self: SymbolTable =>
         mysym setFlag Flags.LOCKED
         mysym setInfo {
           val mytypeParams = sym.typeParams map importSymbol
-          new LazyPolyType(mytypeParams) {
+          new LazyPolyType(mytypeParams) with FlagAgnosticCompleter {
             override def complete(s: Symbol) {
               val result = sym.info match {
                 case from.PolyType(_, res) => res

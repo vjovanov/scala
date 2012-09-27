@@ -7,10 +7,10 @@ abstract class Universe extends scala.reflect.api.Universe {
 
   trait AttachableApi {
     /** ... */
-    def attachments: base.Attachments { type Pos = Position }
+    def attachments: scala.reflect.api.Attachments { type Pos = Position }
 
     /** ... */
-    def addAttachment(attachment: Any): AttachableApi.this.type
+    def updateAttachment[T: ClassTag](attachment: T): AttachableApi.this.type
 
     /** ... */
     def removeAttachment[T: ClassTag]: AttachableApi.this.type
@@ -24,9 +24,15 @@ abstract class Universe extends scala.reflect.api.Universe {
    */
   trait SymbolContextApi extends SymbolApi with AttachableApi { self: Symbol =>
 
+    def deSkolemize: Symbol
+
+    /** The position of this symbol
+     */
+    def pos: Position
+
     def setTypeSignature(tpe: Type): Symbol
 
-    def setAnnotations(annots: AnnotationInfo*): Symbol
+    def setAnnotations(annots: Annotation*): Symbol
 
     def setName(name: Name): Symbol
 
