@@ -576,11 +576,12 @@ trait Printers extends api.Printers { self: SymbolTable =>
               case _ => // do nothing
             })
         case sym: Symbol =>
-          if (sym.isStatic && (sym.isClass || sym.isModule)) print(sym.fullName)
+          if (sym == NoSymbol) print("NoSymbol")
+          else if (sym.isStatic && (sym.isClass || sym.isModule)) print(sym.fullName)
           else print(sym.name)
           if (printIds) print("#", sym.id)
           if (printKinds) print("#", sym.abbreviatedKindString)
-          if (printMirrors) print("%M", footnotes.put[MirrorOf[_]](mirrorThatLoaded(sym)))
+          if (printMirrors) print("%M", footnotes.put[scala.reflect.api.Mirror[_]](mirrorThatLoaded(sym)))
         case NoType =>
           print("NoType")
         case NoPrefix =>
@@ -609,7 +610,7 @@ trait Printers extends api.Printers { self: SymbolTable =>
       if (depth == 0 && !printingFootnotes) {
         printingFootnotes = true
         footnotes.print[Type](this)
-        footnotes.print[MirrorOf[_]](this)
+        footnotes.print[scala.reflect.api.Mirror[_]](this)
         printingFootnotes = false
       }
     }
