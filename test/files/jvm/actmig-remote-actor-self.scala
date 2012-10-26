@@ -20,7 +20,7 @@ object Test {
     // Can fail with class cast exception in alive
     val myAkkaActor = ActorDSL.actor(new StashingActor {
       override def preStart() = {
-        alive(2013)
+        alive(2011)
         println("registered")
         finished success true
         context.stop(self)

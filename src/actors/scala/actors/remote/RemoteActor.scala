@@ -85,7 +85,9 @@ object RemoteActor {
    * Registers <code>a</code> under <code>name</code> on this
    * node.
    */
-  def register(name: Symbol, a: Actor): Unit = synchronized {
+  def register(name: Symbol, a: Actor): Unit = internalRegister(name, a)
+
+  def internalRegister(name: Symbol, a: InternalActor): Unit = synchronized {
     val kernel = kernels.get(Actor.self(Scheduler)) match {
       case None =>
         val serv = TcpService(TcpService.generatePort, cl)
