@@ -37,6 +37,6 @@ package object migration {
     }
   }
 
-  def register(name: Symbol, a: ActorRef): Unit =
+  def registerActorRef(name: Symbol, a: ActorRef): Unit =
     RemoteActor.internalRegister(name, a.asInstanceOf[InternalActorRef].localActor)
 }
