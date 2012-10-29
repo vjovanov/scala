@@ -257,3 +257,13 @@ class DeathPactException(ref: ActorRef = null) extends Exception {
  * Message that is sent to a watching actor when the watched actor terminates.
  */
 case class Terminated(actor: ActorRef)
+
+/**
+ * This is what is used to complete a Future that is returned from an ask/? call,
+ * when it times out.
+ */
+class AskTimeoutException(message: String, cause: Throwable) extends TimeoutException {
+  def this(message: String) = this(message, null: Throwable)
+}
+
+object PoisonPill
