@@ -1,9 +1,6 @@
 package scala.actors
 
-import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.Duration
-import scala.concurrent.Promise
-import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
  * Trait used for migration of Scala actors to Akka.

@@ -1,10 +1,12 @@
-package scala.actors.migration
+package scala.actors
+package migration
 
 import scala.actors._
 import scala.actors.Actor._
 import scala.collection._
 import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import scala.language.implicitConversions
 
 object ActWithStash extends Combinators {
