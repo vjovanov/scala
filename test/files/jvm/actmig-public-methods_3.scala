@@ -27,7 +27,7 @@ object Test {
 
   def main(args: Array[String]) = {
 
-    val respActor = ActorDSL.actor(new StashingActor {
+    val respActor = ActorDSL.actor(new ActWithStash {
       def receive = {
         case (x: String, time: Long) =>
           Thread.sleep(time)
@@ -95,7 +95,7 @@ object Test {
 
     // test reply (back and forth communication)
     {
-      val a = ActorDSL.actor(new StashingActor {
+      val a = ActorDSL.actor(new ActWithStash {
         val msg = ("reply from an actor", 0L)
         override def preStart() = {
           respActor ! msg
@@ -117,7 +117,7 @@ object Test {
 
     // test forward method
     {
-      val a = ActorDSL.actor(new StashingActor {
+      val a = ActorDSL.actor(new ActWithStash {
         val msg = ("forward from an actor", 0L)
         override def preStart() = { respActor ! msg }
         def receive = {

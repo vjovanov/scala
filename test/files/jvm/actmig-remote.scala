@@ -51,7 +51,7 @@ object Test {
     Await.ready(finishedScala.future, 5 seconds)
 
     // Loop with Condition Snippet - migrated
-    val myAkkaActor = ActorDSL.actor(new StashingActor {
+    val myAkkaActor = ActorDSL.actor(new ActWithStash {
       override def preStart() = {
         alive(2013)
         registerActorRef('myActorAkka, self)

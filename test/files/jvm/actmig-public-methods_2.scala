@@ -28,7 +28,7 @@ object Test {
 
   def main(args: Array[String]) = {
 
-    val respActor = ActorDSL.actor(new StashingActor {
+    val respActor = ActorDSL.actor(new ActWithStash {
       def receive = { case x => x }
       override def act() = {
         loop {
@@ -101,7 +101,7 @@ object Test {
 
     // test reply (back and forth communication)
     {
-      val a = ActorDSL.actor(new StashingActor {
+      val a = ActorDSL.actor(new ActWithStash {
         def receive = { case x => x }
         override def act() = {
           val msg = ("reply from an actor", 0L)
@@ -124,7 +124,7 @@ object Test {
 
     // test forward method
     {
-      val a = ActorDSL.actor(new StashingActor {
+      val a = ActorDSL.actor(new ActWithStash {
         def receive = {case _ => ()}
         override def act() ={
         val msg = ("forward from an actor", 0L)
