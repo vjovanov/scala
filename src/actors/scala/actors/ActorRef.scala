@@ -1,5 +1,6 @@
 package scala.actors
 
+import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.Duration
 
 /**
@@ -40,3 +41,12 @@ trait ActorRef {
 
 }
 
+/**
+ * This is what is used to complete a Future that is returned from an ask/? call,
+ * when it times out.
+ */
+class AskTimeoutException(message: String, cause: Throwable) extends TimeoutException {
+  def this(message: String) = this(message, null: Throwable)
+}
+
+object PoisonPill

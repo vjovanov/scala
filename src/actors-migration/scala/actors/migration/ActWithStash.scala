@@ -6,7 +6,6 @@ import scala.actors.Actor._
 import scala.collection._
 import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import scala.language.implicitConversions
 
 object ActWithStash extends Combinators {
@@ -260,12 +259,3 @@ class DeathPactException(ref: ActorRef = null) extends Exception {
  */
 case class Terminated(actor: ActorRef)
 
-/**
- * This is what is used to complete a Future that is returned from an ask/? call,
- * when it times out.
- */
-class AskTimeoutException(message: String, cause: Throwable) extends TimeoutException {
-  def this(message: String) = this(message, null: Throwable)
-}
-
-object PoisonPill
