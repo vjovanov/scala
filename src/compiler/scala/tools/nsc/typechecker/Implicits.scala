@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2012 LAMP/EPFL
+ * Copyright 2005-2013 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -1172,7 +1172,7 @@ trait Implicits extends SourceContextUtils {
         }
 
         try {
-          val tree1 = typed(atPos(pos.focus)(arg))
+          val tree1 = typedPos(pos.focus)(arg)
           if (context.hasErrors) processMacroExpansionError(context.errBuffer.head.errPos, context.errBuffer.head.errMsg)
           else new SearchResult(tree1, EmptyTreeTypeSubstituter)
         } catch {

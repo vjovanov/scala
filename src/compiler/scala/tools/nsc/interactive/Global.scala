@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2009-2012 Scala Solutions and LAMP/EPFL
+ * Copyright 2009-2013 Typesafe/Scala Solutions and LAMP/EPFL
  * @author Martin Odersky
  */
 package scala.tools.nsc
@@ -205,7 +205,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "")
 
   protected[interactive] var minRunId = 1
 
-  private var interruptsEnabled = true
+  private[interactive] var interruptsEnabled = true
 
   private val NoResponse: Response[_] = new Response[Any]
 
@@ -1041,6 +1041,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "")
     }
   }
 
+  @deprecated("SI-6458: Instrumentation logic will be moved out of the compiler.","2.10.0")
   def getInstrumented(source: SourceFile, line: Int, response: Response[(String, Array[Char])]) =
     try {
       interruptsEnabled = false

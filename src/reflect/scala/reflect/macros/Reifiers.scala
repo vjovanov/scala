@@ -1,6 +1,12 @@
 package scala.reflect
 package macros
 
+/**
+ * <span class="badge badge-red" style="float: right;">EXPERIMENTAL</span>
+ *
+ * A slice of [[scala.reflect.macros.Context the Scala macros context]] that
+ *  exposes functions to save reflection artifacts for runtime.
+ */
 trait Reifiers {
   self: Context =>
 
