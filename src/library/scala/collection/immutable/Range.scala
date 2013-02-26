@@ -33,7 +33,6 @@ import scala.collection.parallel.immutable.ParRange
  *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-immutable-collection-classes.html#ranges "Scala's Collection Library overview"]]
  *  section on `Ranges` for more information.
  *
- *  @define Coll Range
  *  @define coll range
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
@@ -78,6 +77,7 @@ extends scala.collection.AbstractSeq[Int]
   final val terminalElement = start + numRangeElements * step
 
   override def last = if (isEmpty) Nil.last else lastElement
+  override def head = if (isEmpty) Nil.head else start
 
   override def min[A1 >: Int](implicit ord: Ordering[A1]): Int =
     if (ord eq Ordering.Int) {
