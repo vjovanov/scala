@@ -202,9 +202,9 @@ abstract class Position extends scala.reflect.api.Position { self =>
   def sameRange(pos: Position): Boolean =
     isRange && pos.isRange && start == pos.start && end == pos.end
 
-  def line: Int = throw new UnsupportedOperationException("Position.line")
+  def line: Int = 1//throw new UnsupportedOperationException("Position.line")
 
-  def column: Int = throw new UnsupportedOperationException("Position.column")
+  def column: Int = 1//throw new UnsupportedOperationException("Position.column")
 
   /** Convert this to a position around `point` that spans a single source line */
   def toSingleLine: Position = this
